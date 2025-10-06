@@ -350,6 +350,7 @@ ShrinkageTrees <- function(y,
   } else if (outcome_type == "binary") {
     y <- as.numeric(y)
     latent_threshold <- qnorm(mean(y))
+    sigma_known <- TRUE
     
     fit <- probitHorseTrees_cpp(
       nSEXP = n_train,
@@ -455,5 +456,10 @@ ShrinkageTrees <- function(y,
     }
   }
   
+  # remove burn-in of sigma
+  if (!sigma_known) {
+    fit$sigma <- fit$sigma[-(1:N_burn)]
+  } 
+
   return(fit)
 }

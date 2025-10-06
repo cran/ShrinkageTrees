@@ -1,8 +1,8 @@
 Package: ShrinkageTrees
 Type: Package
 Title: Regression Trees with Shrinkage Priors
-Version: 1.0.0
-Date: 2025-07-12
+Version: 1.0.2
+Date: 2025-10-06
 Authors@R: c(person("Tijn", "Jacobs", role = c("aut", "cre"), 
                     email = "t.jacobs@vu.nl", 
                     comment = c(ORCID = "0009-0003-6188-9296")))
@@ -23,7 +23,7 @@ LazyData: true
 LazyDataCompression: xz
 Config/testthat/edition: 3
 NeedsCompilation: yes
-Packaged: 2025-07-18 15:33:17 UTC; tijnjacobs
+Packaged: 2025-10-06 09:17:25 UTC; tijnjacobs
 Author: Tijn Jacobs [aut, cre] (ORCID: <https://orcid.org/0009-0003-6188-9296>)
 Repository: CRAN
-Date/Publication: 2025-07-21 09:10:02 UTC
+Date/Publication: 2025-10-06 09:30:13 UTC

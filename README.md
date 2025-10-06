@@ -1,4 +1,5 @@
-# ShrinkageTrees <img src="https://img.shields.io/badge/R%3E%3D-4.2-blue" alt="R >= 4.2"> ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange) <img src="sticker/ShrinkageTrees_hex.png" align="right" width="150"/>
+# ShrinkageTrees <img src="https://img.shields.io/badge/R%3E%3D-4.2-blue" alt="R >= 4.2"> ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Lifecycle: maturing](https://img.shields.io/badge/lifecycle-maturing-blue) [![](https://cranlogs.r-pkg.org/badges/grand-total/ShrinkageTrees)](https://cran.r-project.org/package=ShrinkageTrees)
+ <img src="sticker/ShrinkageTrees_hex.png" align="right" width="150"/>
 
 
 
@@ -14,7 +15,8 @@ The functions can be used for:
 
 Supported outcome types: continuous, binary, and **right-censored survival times**.
 
-The mathematical background and theoretical foundation for these models will appear in "Horseshoe Forests for High-Dimensional Causal Survival Analysis" by T. Jacobs, W.N. van Wieringen, and S.L. van der Pas (2025).
+
+The mathematical background and theoretical foundation for these models is described in the preprint *Horseshoe Forests for High-Dimensional Causal Survival Analysis* by T. Jacobs, W.N. van Wieringen, and S.L. van der Pas ([arXiv:2507.22004](https://arxiv.org/abs/2507.22004)).
 
 
 ## ✨ Features
@@ -26,10 +28,10 @@ The mathematical background and theoretical foundation for these models will app
 
 ## 📦 Installation
 
-You cannot install the released version of ShrinkageTrees from [CRAN](https://CRAN.R-project.org) yet:
+The released version of ShrinkageTrees can be installed from [CRAN](https://cran.r-project.org/package=ShrinkageTrees):
 
 ```r
-# install.packages("ShrinkageTrees")
+install.packages("ShrinkageTrees")
 ```
 
 You can install the development version from [GitHub](https://github.com/tijn-jacobs/ShrinkageTrees):
@@ -90,6 +92,24 @@ ATE_horseshoe <- mean(post_ATE_horseshoe)
 # Plot the posterior of the ATE
 ```
 ![Posterior ATE plot](man/figures/posterior_ate_plot.png)
+
+
+## 🩺 Pancreatic Cancer Analysis Demo
+
+The package includes a **demo analysis** based on the TCGA PAAD (pancreatic cancer) dataset to showcase how ShrinkageTrees can be used in practice. This demo replicates the main case study from the preprint *"Horseshoe Forests for High-Dimensional Causal Survival Analysis"* ([arXiv:2507.22004](https://arxiv.org/abs/2507.22004)).
+
+The demo:
+- Estimates propensity scores for treatment assignment  
+- Fits a Causal Horseshoe Forest to the survival times with right-censoring  
+- Computes the posterior mean ATE and individual CATEs with 95% credible intervals  
+- Produces diagnostic plots (propensity score overlap, posterior ATE, CATE estimates, sigma trace)
+
+
+You can run it directly from R after installing the package:
+```r
+demo("pdac_analysis", package = "ShrinkageTrees")
+```
+
 
 
 ## 📄 Documentation

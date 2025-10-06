@@ -88,6 +88,80 @@ void AugmentCensoredObservations(
   }
 }
 
+void AugmentCensoredObservations(
+  bool is_survival,
+  double* event_time, 
+  const double* observed_left_time,
+  const double* status_indicator,
+  const double* observed_right_time,
+  const double* interval_censoring_indicator, // 1 if interval censored, 
+  const double* predicted_time,               // 0 if observed or right censored
+  const double& sigma,
+  const size_t& n, 
+  Random& random
+) {
+
+  if (!is_survival) return;
+
+  // Declare variables
+  double prediction, temporary, U;                     
+  
+  // Loop over all observations 
+  for (size_t i = 0; i < n; i++) {
+
+    // RIGHT CENSORING
+    if (status_indicator[i] == 0 && interval_censoring_indicator[i] == 0) {
+
+      // Draw from N(mu, sigma^2) truncated to [R, +inf)
+      U = random.uniform();
+      prediction = predicted_time[i];
+
+      const double a  = (observed_right_time[i] - prediction) / sigma; // R bound
+      const double Fa = standard_normal_cdf(a);
+
+      // Uniform over [Fa, 1]
+      // (tiny guard in case Fa is numerically 1.0)
+      if (Fa >= 1.0) {
+        temporary = std::nextafter(1.0, 0.0);
+      } else {
+        temporary = Fa + U * (1.0 - Fa);
+      }
+
+      event_time[i] = prediction + sigma * standard_normal_quantile(temporary);
+    }
+
+
+    // INTERVAL CENSORING
+    if (status_indicator[i] == 0 && interval_censoring_indicator[i] == 1) {
+
+      // Sample from the truncated normal distribution on [L, R]
+      U = random.uniform();
+      prediction = predicted_time[i];
+
+      // Standardize bounds: a = (L - mu)/sigma, b = (R - mu)/sigma
+      const double a = (observed_left_time[i]  - prediction) / sigma;
+      const double b = (observed_right_time[i] - prediction) / sigma;
+
+      // CDF at the bounds (handle one-sided cases if ever used)
+      const double Fa = std::isfinite(a) ? standard_normal_cdf(a) : 0.0;
+      const double Fb = std::isfinite(b) ? standard_normal_cdf(b) : 1.0;
+
+      // Guard against degenerate/tiny intervals due to rounding
+      const double width = Fb - Fa;
+      if (width <= 0.0) {
+        // fall back to the lower bound in CDF space
+        temporary = Fa;
+      } else {
+        // uniform on [Fa, Fb]
+        temporary = Fa + U * width;
+      }
+
+      // Map back to the original scale
+      event_time[i] = prediction + sigma * standard_normal_quantile(temporary);
+    }
+  }
+}
+
 void UpdateSigma(
   bool sigma_known,
   double& sigma,
