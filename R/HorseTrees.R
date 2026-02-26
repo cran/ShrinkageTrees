@@ -191,6 +191,11 @@ HorseTrees <- function(y,
   # Retrieve dimensions of training data
   n_train <- nrow(X_train)
   p_features <- ncol(X_train)
+
+  # Check if dimensions covariates match with outcome
+  if (length(y) != n_train) {
+    stop("The length of outcome vector y must match the number of rows in X_train.")
+  }
   
   # Check if dimensions match with test data
   if (!is.null(X_test)) {
@@ -273,6 +278,10 @@ HorseTrees <- function(y,
       p_pruneSEXP = p_prune,
       nuSEXP = nu,
       lambdaSEXP = lambda,
+      dirichlet_boolSEXP = FALSE,
+      a_dirichletSEXP = 1,
+      b_dirichletSEXP = 1,
+      rho_dirichletSEXP = 1,
       sigmaSEXP = sigma_hat,
       sigma_knownSEXP = sigma_known,
       omegaSEXP = 1,
@@ -282,8 +291,6 @@ HorseTrees <- function(y,
       reversibleSEXP = TRUE,
       store_parametersSEXP = FALSE,
       store_posterior_sampleSEXP = store_posterior_sample,
-      n1SEXP = seed,
-      n2SEXP = 420,
       verboseSEXP = verbose
     )
     
@@ -330,8 +337,6 @@ HorseTrees <- function(y,
       prior_typeSEXP = "horseshoe",
       reversibleSEXP = TRUE,
       store_posterior_sampleSEXP = store_posterior_sample,
-      n1SEXP = seed,
-      n2SEXP = 420,
       verboseSEXP = verbose
     )
 
@@ -390,6 +395,10 @@ HorseTrees <- function(y,
       p_pruneSEXP = p_prune,
       nuSEXP = nu,
       lambdaSEXP = lambda,
+      dirichlet_boolSEXP = FALSE,
+      a_dirichletSEXP = 1,
+      b_dirichletSEXP = 1,
+      rho_dirichletSEXP = 1,
       sigmaSEXP = sigma_hat,
       sigma_knownSEXP = sigma_known,
       omegaSEXP = 1,
@@ -399,8 +408,6 @@ HorseTrees <- function(y,
       reversibleSEXP = TRUE,
       store_parametersSEXP = FALSE,
       store_posterior_sampleSEXP = store_posterior_sample,
-      n1SEXP = seed,
-      n2SEXP = 420,
       verboseSEXP = verbose
     )
     

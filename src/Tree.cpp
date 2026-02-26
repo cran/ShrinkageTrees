@@ -127,44 +127,6 @@ void Tree::PrintTree(bool also_print_children) const {
 }  // Updated
 
 
-// Function to remove the children of a nog node with the given ID. 
-bool Tree::KillChildren(size_t node_ID, Parameters parameters) {
-  
-  // Get the pointer to the node with the given ID.
-  Tree* node = GetNodePointer(node_ID);
-  
-  // If the node pointer is null, the node ID is invalid.
-  if (node == nullptr) {
-    cout << "error in KillChildren: invalid node ID\n";
-    return false;
-  }
-  
-  // Check if the node is a "nog" node (a node with no grandchildren).
-  if (node->IsNog()) {
-    // Delete the left and right children.
-    delete node->left;
-    delete node->right;
-    
-    // Set the left and right pointers to nullptr.
-    node->left = nullptr;
-    node->right = nullptr;
-    
-    // Reset the splitting variable and cutpoint.
-    node->split_var = 0;
-    node->cut_val = 0;
-    
-    // Set the node's theta value to the provided theta.
-    node->parameters = parameters;
-    
-    return true;
-  } else { 
-    // If the node is not a "nog" node, print an error message.
-    cout << "error in death: node is not a nog node\n";
-    return false;
-  }
-} // Partially updated
-
-
 // Function to check if the node is a nog node (a node with no grandchildren).
 // This is equivalent to having exactly two descendants.
 bool Tree::IsNog() const {
@@ -201,9 +163,9 @@ size_t Tree::NumberOfNogs() const {
   } 
 } 
 
-// Function to count the number of leafs nodes in the subtree, i.e. the number
+// Function to count the number of leaf nodes in the subtree, i.e. the number
 // of terminal nodes.
-size_t Tree::NumberOfLeafs() const {
+size_t Tree::NumberOfLeaves() const {
   
   // If the node is a leaf (no left child), return 1.
   if (left == nullptr) {
@@ -211,21 +173,21 @@ size_t Tree::NumberOfLeafs() const {
   }
   
   // Recursively count the bottom nodes in the left and right subtrees.
-  return left->NumberOfLeafs() + right->NumberOfLeafs();
+  return left->NumberOfLeaves() + right->NumberOfLeaves();
   
 }
 
 
 // Function retrieves the addresses (i.e. pointers to) of  leaf nodes in the 
 // tree.
-void Tree::CollectLeafs(std::vector<Tree*>& leaf_vector) {
+void Tree::CollectLeaves(std::vector<Tree*>& leaf_vector) {
   
   // If the node has children, recursively retrieve the leaf addresses from 
   // both children.
   if (left != nullptr) {
     
-    left->CollectLeafs(leaf_vector);
-    right->CollectLeafs(leaf_vector);
+    left->CollectLeaves(leaf_vector);
+    right->CollectLeaves(leaf_vector);
     
   } else {
     
@@ -291,30 +253,6 @@ void Tree::CollectNodes(std::vector<const Tree*>& node_vector) const {
     right->CollectNodes(node_vector);
   }
 } 
-
-
-// Function to find the bottom node in the tree based on the given data point 
-// and cutpoints. The function traverses the tree recursively until it reaches 
-// the leaf node to which the observation is assigned.
-Tree* Tree::FindLeaf(double* x_row, Cutpoints& cutpoints) {
-  
-  // If the current node has no children, it is a leaf node.
-  if (left == nullptr) {
-    return this; // Return the current leaf node.
-  }
-  
-  // Compare the value of the variable at index `v` with the cutpoint.
-  // If the value is less than the cutpoint, recurse to the left child.
-  if (x_row[split_var] < cutpoints.values[split_var][cut_val]) {
-    
-    return left->FindLeaf(x_row, cutpoints);
-  } else { 
-    
-    // Otherwise, recurse to the right child.
-    return right->FindLeaf(x_row, cutpoints);
-  }
-}
-
 
 // Function searches the interval (lower_bound, upper_bound) in which specified
 // variable split_var can be split. This function recursively adjusts the  
@@ -388,6 +326,7 @@ void Tree::CutDownTree() {
   parent = nullptr;
   left = nullptr;
   right = nullptr;
+  leaf_index_ = std::numeric_limits<size_t>::max();
 } 
 
 
@@ -446,11 +385,19 @@ void Tree::GrowChildren(Tree* leaf, size_t _split_var, size_t _cut_val,
   // Set the parent pointers for the new children.
   left->parent = leaf;
   right->parent = leaf;
+
+  // Initialize the leaf_index_ for the new children.
+  left->leaf_index_  = std::numeric_limits<size_t>::max();
+  right->leaf_index_ = std::numeric_limits<size_t>::max();
+
+  // This node (the passed-in leaf) becomes internal: “unset” its index too
+  leaf->leaf_index_  = std::numeric_limits<size_t>::max();  // <- was: leaf_index_
+
 }
 
 
 // Function to remove (delete) the children of a nog node.
-// The `parameters` pbject of the node `nog_node` is updated.
+// The `parameters` object of the node `nog_node` is updated.
 void Tree::KillChildren(Tree* nog_node, Parameters parameters) {
   // Delete left and right children
   delete nog_node->left;
@@ -466,6 +413,9 @@ void Tree::KillChildren(Tree* nog_node, Parameters parameters) {
   
   // Set the parameter value of the nog node to the provided `parameters`
   nog_node->parameters = parameters;
+
+  // This node is now a leaf in the current structure
+  nog_node->leaf_index_ = std::numeric_limits<size_t>::max();
 }
 
 // Overloaded function to remove (delete) the children of a nog node.
@@ -482,11 +432,56 @@ void Tree::KillChildren(Tree* nog_node) {
   // Reset the split variable and cut value of the nog node
   nog_node->split_var = 0;
   nog_node->cut_val = 0;
+
+  // Parameters unchanged; just mark as leaf for the stats pass.
+  nog_node->leaf_index_ = std::numeric_limits<size_t>::max();
 }
+
+
+// Function to remove the children of a nog node with the given ID. 
+bool Tree::KillChildren(size_t node_ID, Parameters parameters) {
+  
+  // Get the pointer to the node with the given ID.
+  Tree* node = GetNodePointer(node_ID);
+  
+  // If the node pointer is null, the node ID is invalid.
+  if (node == nullptr) {
+    cout << "error in KillChildren: invalid node ID\n";
+    return false;
+  }
+  
+  // Check if the node is a "nog" node (a node with no grandchildren).
+  if (node->IsNog()) {
+    // Delete the left and right children.
+    delete node->left;
+    delete node->right;
+    
+    // Set the left and right pointers to nullptr.
+    node->left = nullptr;
+    node->right = nullptr;
+    
+    // Reset the splitting variable and cutpoint.
+    node->split_var = 0;
+    node->cut_val = 0;
+    
+    // Set the node's theta value to the provided theta.
+    node->parameters = parameters;
+
+    node->leaf_index_ = std::numeric_limits<size_t>::max();
+
+    return true;
+  } else { 
+    // If the node is not a "nog" node, print an error message.
+    cout << "error in death: node is not a nog node\n";
+    return false;
+  }
+} // Partially updated
+
 
 // Recursive function to find the cut value for the given `split_var`.
 // If the parent node uses the same split variable, return its cut value.
 // Otherwise, continue the search up the tree.
+/*
 size_t Tree::FindSameCut(size_t split_var) const {
   // Get the parent node of the current node
   Tree* parent_node = this->GetParent();
@@ -496,6 +491,23 @@ size_t Tree::FindSameCut(size_t split_var) const {
     return parent_node->GetCutVal();
   }
   
+  // Otherwise, recursively search up the tree
+  return parent_node->FindSameCut(split_var);
+}
+*/
+size_t Tree::FindSameCut(size_t split_var) const {
+    // Get the parent node of the current node
+  Tree* parent_node = this->GetParent();
+
+  if (!parent_node) {
+    return 0; // or some safe sentinel; this path is rarely used but must be safe
+  }
+
+  // If parent uses the same split variable, return its cut value
+  if (parent_node->GetSplitVar() == split_var) {
+    return parent_node->GetCutVal();
+  }
+
   // Otherwise, recursively search up the tree
   return parent_node->FindSameCut(split_var);
 }

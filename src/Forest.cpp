@@ -15,7 +15,7 @@ void Forest::SetTreePrior(double base, double power, double eta,
                           double p_GROW, double p_PRUNE) {
   tree_prior.base = base;
   tree_prior.power = power;
-  tree_prior.eta = eta;
+  tree_prior.eta = eta; // eta is the fixed variance parameter for standard BART
   tree_prior.p_GROW = p_GROW;
   tree_prior.p_PRUNE = p_PRUNE;
 }
@@ -39,8 +39,13 @@ std::vector<Tree>* Forest::GetTreesPointer() {
 // Sets dimensions, pointers to input data, allocates memory for working
 // variables (predictions, residuals, temporary_fit), initializes cutpoints, 
 // sets up the Data object, and initializes feature usage counters and probs.
-void Forest::SetUpForest(size_t p, size_t n, double *x, double *y, int *nc, double omega) {
-  
+// Initialize data and related structures within the Forest class.
+// Sets dimensions, pointers to input data, allocates memory for working
+// variables (predictions, residuals, temporary_fit), initializes cutpoints,
+// sets up the Data object, and initializes feature usage counters and probs.
+void Forest::SetUpForest(size_t p, size_t n, double *x, double *y,
+                         int *nc, double omega) {
+
   // Set the dimensions and pointers to the input data
   this->p = p;
   this->n = n;
@@ -51,26 +56,22 @@ void Forest::SetUpForest(size_t p, size_t n, double *x, double *y, int *nc, doub
   this->omega = omega;
 
   // Initialize cutpoints if not set
-  if (cutpoints.p == 0) {
+  if (cutpoints.p == 0)
     cutpoints.SetCutpoints(p, n, x, nc);
-  }
 
   // Allocate memory for predictions
-  if (predictions != nullptr) {
+  if (predictions != nullptr)
     delete[] predictions;
-  }
   predictions = new double[n];
 
   // Allocate memory for residuals
-  if (residual != nullptr) {
+  if (residual != nullptr)
     delete[] residual;
-  }
   residual = new double[n];
 
   // Allocate memory for temporary_fit
-  if (temporary_fit != nullptr) {
+  if (temporary_fit != nullptr)
     delete[] temporary_fit;
-  }
   temporary_fit = new double[n];
 
   // Set up data in the Data object
@@ -87,6 +88,7 @@ void Forest::SetUpForest(size_t p, size_t n, double *x, double *y, int *nc, doub
   variable_inclusion_count.resize(p, 0);
   variable_inclusion_prob.resize(p, 1.0 / static_cast<double>(p));
 }
+
 
 // Predicts the output for a given set of covariates using the entire forest
 void Forest::Predict(size_t p, size_t n, double *X, double *predictions) {
@@ -115,6 +117,8 @@ void Forest::Predict(size_t p, size_t n, double *X, double *predictions) {
   delete[] single_tree_prediction;
 }
 
+
+
 // Performs a single iteration of the MCMC process, updating the trees in the forest.
 void Forest::UpdateForest(const double& sigma, ScaleMixture& scale_mixture, bool reversible,
                           const size_t& delayed_proposal,
@@ -141,8 +145,8 @@ void Forest::UpdateForest(const double& sigma, ScaleMixture& scale_mixture, bool
                                  reversible, scale_mixture, random);
 
     // Draw new values for all the terminal nodes' parameters (mu) of tree `j`
-//    DrawMuAllLeaves(trees[j], cutpoints, data, tree_prior, sigma, omega,
-//                    scale_mixture, random);
+    DrawMuAllLeaves(trees[j], cutpoints, data, tree_prior, sigma, omega,
+                    scale_mixture, random);
 
     // Update the variables of all the leaf node parameters
     FullUpdate(trees[j], cutpoints, data, sigma, omega, scale_mixture, random);

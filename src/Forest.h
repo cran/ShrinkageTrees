@@ -52,7 +52,12 @@
 #ifndef GUARD_Forest_h
 #define GUARD_Forest_h
 
+#include <vector>
+using std::vector; // DOUBLE?!?!?
+
 #include "TreeModifications.h"
+
+
 
 class Forest {
 
@@ -77,7 +82,8 @@ class Forest {
 
   // Variables related to feature selection
   std::vector<size_t> variable_inclusion_count; // Number of splits per feature
-  std::vector<double> variable_inclusion_prob;  // Feature inclusion probabilities
+  std::vector<double> variable_inclusion_prob, log_vip;  // Feature inclusion probabilities
+
 
 public:
 
@@ -91,39 +97,11 @@ public:
                              bool reversible, ScaleMixture& scale_mixture,
                              Random& random);
 
-  // Constructors
-  Forest() 
-    : m(200), trees(m, Tree()), tree_prior(), p(0), n(0), x(nullptr), 
-      y(nullptr), cutpoints(), data(), predictions(nullptr), 
-      residual(nullptr), temporary_fit(nullptr) {}
-
-  Forest(size_t im) 
-    : m(im), trees(m), tree_prior(), p(0), n(0), x(nullptr), y(nullptr), 
-      cutpoints(), data(), predictions(nullptr), residual(nullptr), 
+  // Constructor
+  Forest(size_t im)
+    : m(im), trees(m), tree_prior(), p(0), n(0), x(nullptr), y(nullptr),
+      cutpoints(), data(), predictions(nullptr), residual(nullptr),
       temporary_fit(nullptr) {}
-
-  // Copy constructor
-  Forest(const Forest& forest)
-    : m(forest.m), trees(forest.trees), tree_prior(forest.tree_prior),
-      p(forest.p), n(forest.n), x(forest.x), y(forest.y),
-      cutpoints(forest.cutpoints), data(forest.data), 
-      predictions(nullptr), residual(nullptr), temporary_fit(nullptr) {
-
-    if (forest.predictions != nullptr) {
-      predictions = new double[n];
-      std::copy(forest.predictions, forest.predictions + n, predictions);
-    }
-    if (forest.residual != nullptr) {
-      residual = new double[n];
-      std::copy(forest.residual, forest.residual + n, residual);
-    }
-    if (forest.temporary_fit != nullptr) {
-      temporary_fit = new double[n];
-      std::copy(forest.temporary_fit, forest.temporary_fit + n, temporary_fit);
-    }
-    variable_inclusion_count = forest.variable_inclusion_count;
-    variable_inclusion_prob = forest.variable_inclusion_prob;
-  }
 
   // Destructor
   ~Forest() {
@@ -133,7 +111,8 @@ public:
   }
 
   // Setters and Getters
-  void SetUpForest(size_t p, size_t n, double *x, double *y, int* nc, double omega);
+  void SetUpForest(size_t p, size_t n, double *x, double *y, int *nc,
+                  double omega);
   void SetTreePrior(TreePrior& _tree_prior);
   void SetTreePrior(double _base, double _power, double _eta, double _p_GROW, 
                     double _p_PRUNE);
@@ -143,6 +122,10 @@ public:
   double* GetPredictions() const;
   std::vector<Tree>* GetTreesPointer();
   size_t GetM() const { return m; }; 
+  // const vector<double>& GetVariableInclusionProb() const { return variable_inclusion_prob; }
+  // const vector<size_t>& GetVariableInclusionCount() const { return variable_inclusion_count; }
+
+  
 
   // Methods
   void Predict(size_t p, size_t n, double *X, double *predictions);  
@@ -152,5 +135,7 @@ public:
   void PrintForest(size_t tree_index = std::numeric_limits<size_t>::max());
 
 };
+
+
 
 #endif // GUARD_Forest_h

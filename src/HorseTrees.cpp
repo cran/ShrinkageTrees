@@ -1,4 +1,5 @@
 #include "HorseTrees.h"
+#include "ForestEngine.h"
 
 // [[Rcpp::export]]
 Rcpp::List HorseTrees_cpp( 
@@ -19,7 +20,11 @@ Rcpp::List HorseTrees_cpp(
   SEXP p_growSEXP,
   SEXP p_pruneSEXP,
   SEXP nuSEXP,     
-  SEXP lambdaSEXP,     
+  SEXP lambdaSEXP,
+  SEXP dirichlet_boolSEXP,
+  SEXP a_dirichletSEXP,
+  SEXP b_dirichletSEXP, 
+  SEXP rho_dirichletSEXP,     
   SEXP sigmaSEXP,
   SEXP sigma_knownSEXP,     
   SEXP omegaSEXP,
@@ -29,8 +34,6 @@ Rcpp::List HorseTrees_cpp(
   SEXP reversibleSEXP,
   SEXP store_parametersSEXP,
   SEXP store_posterior_sampleSEXP,
-  SEXP n1SEXP,     
-  SEXP n2SEXP,
   SEXP verboseSEXP
 ) {     
   
@@ -60,7 +63,11 @@ Rcpp::List HorseTrees_cpp(
   double p_grow = Rcpp::as<double>(p_growSEXP);   
   double p_prune = Rcpp::as<double>(p_pruneSEXP);   
   double nu = Rcpp::as<double>(nuSEXP);   
-  double lambda = Rcpp::as<double>(lambdaSEXP);   
+  double lambda = Rcpp::as<double>(lambdaSEXP);  
+  bool dirichlet_bool = Rcpp::as<bool>(dirichlet_boolSEXP);
+  double a_dirichlet = Rcpp::as<double>(a_dirichletSEXP);
+  double b_dirichlet = Rcpp::as<double>(b_dirichletSEXP); 
+  double rho_dirichlet = Rcpp::as<double>(rho_dirichletSEXP);
   double sigma = Rcpp::as<double>(sigmaSEXP);
   bool sigma_known = Rcpp::as<bool>(sigma_knownSEXP);
   double omega = Rcpp::as<double>(omegaSEXP);
@@ -71,8 +78,6 @@ Rcpp::List HorseTrees_cpp(
   string prior_type = Rcpp::as<string>(prior_typeSEXP);
   bool store_parameters =  Rcpp::as<bool>(store_parametersSEXP);
 
-  unsigned int n1 = Rcpp::as<unsigned int>(n1SEXP);   
-  unsigned int n2 = Rcpp::as<unsigned int>(n2SEXP);  
   bool print_progress = Rcpp::as<bool>(verboseSEXP);
 
   // Objects for is_survival data
@@ -98,46 +103,62 @@ Rcpp::List HorseTrees_cpp(
     train_predictions_sample = Rcpp::NumericMatrix(N_post, n);
     test_predictions_sample = Rcpp::NumericMatrix(N_post, n_test);
   }
-  
+
+  Rcpp::NumericVector store_alpha_dirichlet;
+  Rcpp::NumericMatrix store_split_probs;
+  Rcpp::NumericMatrix store_split_counts;
+
+  double alpha_dirichlet = 1.0;
+  if (dirichlet_bool) {
+    store_alpha_dirichlet = Rcpp::NumericVector(N_post);
+    store_split_probs     = Rcpp::NumericMatrix(N_post, p);
+  }
+  store_split_counts     = Rcpp::NumericMatrix(N_post, p);
+
   std::vector<size_t> cumulative_inclusion_count(p, 0);
-  std::vector<std::vector<double>> variable_inclusion_prob;
   
   // Initialize the C-based random number generator
-  arn random(n1, n2);
+  RandomGenerator random;
 
   // Map the input to the corresponding PriorType
   PriorType prior;
   
   if (prior_type == "horseshoe") {
     prior = PriorType::Horseshoe;
-  } else if (prior_type == "fixed") {
+  } else if (prior_type == "fixed" || prior_type == "standard") {
     prior = PriorType::FixedVariance;
   } else if (prior_type == "halfcauchy") {
     prior = PriorType::HalfCauchy;
   } else if (prior_type == "horseshoe_fw") {
     prior = PriorType::Horseshoe_fw;
+  } else if (prior_type == "dirichlet") {
+    prior = PriorType::FixedVariance; // <- This should be an empty prior!!!
   } else {
-    Rcpp::stop("Invalid prior type provided. Choose one of: 'horseshoe', 'fixed', 'halfcauchy', 'horseshoe_fw'.");
+    Rcpp::stop("Invalid prior type provided. Choose one of: 'horseshoe', 'fixed', 'halfcauchy', 'horseshoe_fw', 'standard', 'dirichlet.");
   }
-
   
   // Initialize the scale mixture prior on the step heights in the leaves
   ScaleMixture scale_mixture(prior, param1, param2);
   
   // Build the forest
-  Forest forest(number_of_trees);
-  forest.SetTreePrior(base, power, param1, p_grow, p_prune); // In case of NON-RJ; param1 = step height variance
+  ForestEngineType engine_type;
+  if (reversible) {
+    engine_type = ForestEngineType::forest_type;
+  } else {
+    engine_type = ForestEngineType::stan_forest_type;
+  }
+  ForestEngine forest(engine_type, number_of_trees);
+  forest.SetTreePrior(base, power, param1, p_grow, p_prune, a_dirichlet, b_dirichlet, rho_dirichlet, false, dirichlet_bool, alpha_dirichlet); // In case of NON-RJ; param1 = step height variance
   forest.SetUpForest(p, n, X_train, y, nullptr, omega);
+
   
   for (size_t i = 0; i < n; i++) train_predictions_mean[i] = 0.0;
   for (size_t i = 0; i < n_test; i++) test_predictions_mean[i] = 0.0;
   
-  //-----------------------------------------------------------
   
   // Temporary storage
-  double* testpred = (n_test) ? new double[n_test] : nullptr;
+  double* test_predictions = (n_test) ? new double[n_test] : nullptr;
   
-  //-----------------------------------------------------------
   // MCMC
   if(print_progress) Rcpp::Rcout << "\nProgress of the MCMC sampler:\n\n";
 
@@ -149,9 +170,9 @@ Rcpp::List HorseTrees_cpp(
   double sum_accept = 0;
   double acceptance_ratio;
 
-  int max_stored_leafs = 1;
-  if(store_parameters)  max_stored_leafs = 20;
-  std::vector<Tree>* all_trees = forest.GetTreesPointer();
+  int max_stored_leaves = 1;
+  if(store_parameters)  max_stored_leaves = 20;
+  // std::vector<Tree>* all_trees = forest.GetTreesPointer();
 
   Rcpp::NumericMatrix store_global_parameters;
   Rcpp::NumericMatrix store_local_parameters;
@@ -159,8 +180,8 @@ Rcpp::List HorseTrees_cpp(
 
   if (store_parameters) {
     store_global_parameters = Rcpp::NumericMatrix(N_post, number_of_trees);
-    store_local_parameters = Rcpp::NumericMatrix(N_post, max_stored_leafs * number_of_trees);
-    store_local_indices = Rcpp::IntegerMatrix(N_post, max_stored_leafs * number_of_trees);
+    store_local_parameters = Rcpp::NumericMatrix(N_post, max_stored_leaves * number_of_trees);
+    store_local_indices = Rcpp::IntegerMatrix(N_post, max_stored_leaves * number_of_trees);
     
     // Initialize with -2 for debugging (optional)
     store_global_parameters.fill(-2);
@@ -182,7 +203,12 @@ Rcpp::List HorseTrees_cpp(
   int time1 = time(&time_stamp);
   
   for (size_t i = 0; i < total; i++) {
-    
+
+    if(i == (N_burn/2) && dirichlet_bool) {
+      forest.StartDirichlet();
+    }
+
+  
     if(print_progress){
       // Progress bar
       float progress = static_cast<float>(i) / static_cast<float>(total);
@@ -197,11 +223,19 @@ Rcpp::List HorseTrees_cpp(
       Rcpp::Rcout.flush();
     }
 
+
     // Update the forest (outer Gibbs step)
-    forest.UpdateForest(sigma, scale_mixture, reversible, delayed_proposal, random, accepted);
-  
-  
-    // Update fores wide shrinkage parameter (outer Gibbs step0
+    forest.UpdateForest(
+      sigma, 
+      scale_mixture, 
+      reversible, 
+      delayed_proposal, 
+      random, 
+      accepted
+    );
+    
+  /*
+    // Update fores wide shrinkage parameter (outer Gibbs step)
     if (prior_type == "horseshoe_fw") {
       UpdateForestwideShrinkage(
         all_trees,
@@ -214,6 +248,7 @@ Rcpp::List HorseTrees_cpp(
         random
       );
     }
+  */
 
     // Update sigma (outer Gibbs step)
     UpdateSigma(
@@ -229,10 +264,20 @@ Rcpp::List HorseTrees_cpp(
       random
     );
 
+
     // Augment the censored data
-    AugmentCensoredObservations(is_survival, y, y_observed, status_indicator, forest.GetPredictions(), sigma, n, random);
+    AugmentCensoredObservations(
+      is_survival, 
+      y, 
+      y_observed, 
+      status_indicator, 
+      forest.GetPredictions(), 
+      sigma, 
+      n, 
+      random
+    );
 
-
+    /*
     // Save the (averages for now) of the leaf node parameters
     if (store_parameters && i >= N_burn) {
       size_t tree_counter = 0;
@@ -240,7 +285,7 @@ Rcpp::List HorseTrees_cpp(
       for (Tree& tree : *all_trees) {
         // Collect all leaf nodes
         std::vector<Tree*> leaf_vector;
-        tree.CollectLeafs(leaf_vector);
+        tree.CollectLeaves(leaf_vector);
 
         // Iterate through the collected leaf nodes
         for (size_t leaf_index = 0; leaf_index < leaf_vector.size(); ++leaf_index) {
@@ -255,7 +300,7 @@ Rcpp::List HorseTrees_cpp(
           } 
 
           // Compute the column index for this leaf
-          size_t col_index = tree_counter * max_stored_leafs + leaf_index;
+          size_t col_index = tree_counter * max_stored_leaves + leaf_index;
 
           // Ensure col_index does not exceed matrix bounds
           if (col_index < static_cast<size_t>(store_local_parameters.ncol())) {
@@ -273,6 +318,7 @@ Rcpp::List HorseTrees_cpp(
         tree_counter++;
       }
     }
+    */
 
     if (i >= N_burn) {
       // Store posterior mean of training predictions
@@ -294,20 +340,20 @@ Rcpp::List HorseTrees_cpp(
 
       // Predict test set
       if (n_test > 0) {
-        forest.Predict(p, n_test, X_test, testpred);
+        forest.Predict(p, n_test, X_test, test_predictions);
       }
 
       // Store posterior sample of test predictions
       if (store_posterior_sample && n_test > 0) {
         for (size_t k = 0; k < n_test; k++) {
-          test_predictions_sample(i - N_burn, k) = testpred[k];
+          test_predictions_sample(i - N_burn, k) = test_predictions[k];
         }
       }
 
       // Store posterior mean of test predictions
       if (n_test > 0) {
         for (size_t k = 0; k < n_test; k++) {
-          test_predictions_mean[k] += testpred[k];
+          test_predictions_mean[k] += test_predictions[k];
         }
       }
 
@@ -315,6 +361,16 @@ Rcpp::List HorseTrees_cpp(
       for (size_t j = 0; j < number_of_trees; j++) {
         sum_accept += accepted[j];
       }
+
+      if (dirichlet_bool) {
+        const std::vector<double>& probs = forest.GetVariableInclusionProb();
+        for (size_t j = 0; j < p; ++j) {
+          store_split_probs(i - N_burn, j) = probs[j];
+        }
+      }
+      const std::vector<size_t>& counts = forest.GetVariableInclusionCount();
+      for (size_t j = 0; j < p; ++j) store_split_counts(i - N_burn, j) = counts[j];
+      
     }
   }
 
@@ -361,8 +417,14 @@ Rcpp::List HorseTrees_cpp(
   if (prior_type == "horseshoe_fw") {
     results["forestwide_shrinkage"] = store_forestwide_shrinkage;
   } 
+  if (dirichlet_bool) {
+    results["alpha_dirichlet"] = store_alpha_dirichlet;
+    results["split_probs"] = store_split_probs;
+  }
+  results["store_split_counts"] = store_split_counts;
+
   
-  if (testpred) delete[] testpred;
+  if (test_predictions) delete[] test_predictions;
   delete[] accepted;
 
   return results;
