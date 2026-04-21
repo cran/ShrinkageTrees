@@ -1,449 +1,299 @@
-
 #include "StanTree.h"
 
-
-// node id
-size_t StanTree::nid() const 
+// Return the 1-based binary-heap node id.
+size_t StanTree::NodeID() const
 {
-   if(!p) return 1; //if you don't have a parent, you are the top
-   if(this==p->l) return 2*(p->nid()); //if you are a left child
-   else return 2*(p->nid())+1; //else you are a right child
+  if (!parent) return 1; // Root has no parent
+  if (this == parent->left) return 2 * (parent->NodeID());
+  else return 2 * (parent->NodeID()) + 1;
 }
 
-StanTree::StanTree_p StanTree::getptr(size_t nid)
+// Return a pointer to the node with the given id, or nullptr if not found.
+StanTree* StanTree::GetNodePointer(size_t id)
 {
-   if(this->nid() == nid) return this; //found it
-   if(l==0) return 0; //no children, did not find it
-   StanTree_p lp = l->getptr(nid);
-   if(lp) return lp; //found on left
-   StanTree_p rp = r->getptr(nid);
-   if(rp) return rp; //found on right
-   return 0; //never found it
+  if (this->NodeID() == id) return this;
+  if (left == nullptr) return nullptr;
+  StanTree* found_left = left->GetNodePointer(id);
+  if (found_left) return found_left;
+  StanTree* found_right = right->GetNodePointer(id);
+  if (found_right) return found_right;
+  return nullptr;
 }
 
-//add children to  bot node nid
-bool StanTree::birth(size_t nid, size_t split_var, size_t cut_val, double step_heightl, double step_heightr)
+// Grow a leaf (addressed by node id) into an internal node.
+bool StanTree::Birth(size_t nid, size_t split_var, size_t cut_val,
+                     double left_step_height, double right_step_height)
 {
-   StanTree_p np = getptr(nid);
-   if(np==0) {
-      cout << "error in birth: bottom node not found\n";
-      return false; //did not find note with that nid
-   }
-   if(np->l!=0) {
-      cout << "error in birth: found node has children\n";
-      return false; //node is not a bottom node
-   }
+  StanTree* target = GetNodePointer(nid);
+  if (target == nullptr) {
+    Rcpp::warning("StanTree::Birth: bottom node not found");
+    return false;
+  }
+  if (target->left != nullptr) {
+    Rcpp::warning("StanTree::Birth: found node has children");
+    return false;
+  }
 
-   //add children to bottom node np
-   StanTree_p l = new StanTree;
-   l->step_height=step_heightl;
-   StanTree_p r = new StanTree;
-   r->step_height=step_heightr;
-   np->l=l;
-   np->r=r;
-   np->split_var = split_var; np->cut_val=cut_val;
-   l->p = np;
-   r->p = np;
+  StanTree* left_child  = new StanTree;
+  left_child->step_height  = left_step_height;
+  StanTree* right_child = new StanTree;
+  right_child->step_height = right_step_height;
 
-   return true;
+  target->left      = left_child;
+  target->right     = right_child;
+  target->split_var = split_var;
+  target->cut_val   = cut_val;
+  left_child->parent  = target;
+  right_child->parent = target;
+
+  return true;
 }
 
-//depth of node
-size_t StanTree::depth()
+// Return the depth of this node (root = 0).
+size_t StanTree::NodeDepth()
 {
-   if(!p) return 0; //no parents
-   else return (1+p->depth());
+  if (!parent) return 0;
+  return 1 + parent->NodeDepth();
 }
 
-//StanTree size
-size_t StanTree::StanTreesize()
+// Return the total number of nodes in the tree.
+size_t StanTree::TreeSize()
 {
-   if(l==0) return 1;  //if bottom node, StanTree size is 1
-   else return (1+l->StanTreesize()+r->StanTreesize());
+  if (left == nullptr) return 1;
+  return 1 + left->TreeSize() + right->TreeSize();
 }
 
-//node type
-char StanTree::ntype()
+// Return the node type character: t=top, b=bottom, n=no-grandchildren, i=interior.
+char StanTree::NodeType()
 {
-   //t:top, b:bottom, n:no grandchildren, i:internal
-   if(!p) return 't';
-   if(!l) return 'b';
-   if(!(l->l) && !(r->l)) return 'n';
-   return 'i';
+  if (!parent) return 't';
+  if (!left)   return 'b';
+  if (!(left->left) && !(right->left)) return 'n';
+  return 'i';
 }
 
-//print out StanTree(pc=true) or node(pc=false) information
-void StanTree::pr(bool pc) 
+// Remove the children of the nog node with the given id.
+bool StanTree::Death(size_t nid, double new_step_height)
 {
-   size_t d = depth();
-   size_t id = nid();
-
-   size_t pid;
-   if(!p) pid=0; //parent of top node
-   else pid = p->nid();
-
-   std::string pad(2*d,' ');
-   std::string sp(", ");
-   if(pc && (ntype()=='t'))
-      cout << "StanTree size: " << StanTreesize() << std::endl;
-   cout << pad << "(id,parent): " << id << sp << pid;
-   cout << sp << "(split_var,cut_val): " << split_var << sp << cut_val;
-   cout << sp << "step_height: " << step_height;
-   cout << sp << "type: " << ntype();
-   cout << sp << "depth: " << depth();
-   cout << sp << "pointer: " << this << std::endl;
-
-   if(pc) {
-      if(l) {
-         l->pr(pc);
-         r->pr(pc);
-      }
-   }
+  StanTree* nog_node = GetNodePointer(nid);
+  if (nog_node == nullptr) {
+    Rcpp::warning("StanTree::Death: nid invalid");
+    return false;
+  }
+  if (nog_node->IsNog()) {
+    delete nog_node->left;
+    delete nog_node->right;
+    nog_node->left        = nullptr;
+    nog_node->right       = nullptr;
+    nog_node->split_var   = 0;
+    nog_node->cut_val     = 0;
+    nog_node->step_height = new_step_height;
+    return true;
+  } else {
+    Rcpp::warning("StanTree::Death: node is not a nog node");
+    return false;
+  }
 }
 
-//kill children of  nog node nid
-bool StanTree::death(size_t nid, double step_height)
+// Return true iff this node has children but no grandchildren.
+bool StanTree::IsNog()
 {
-   StanTree_p nb = getptr(nid);
-   if(nb==0) {
-      cout << "error in death, nid invalid\n";
-      return false;
-   }
-   if(nb->isnog()) {
-      delete nb->l;
-      delete nb->r;
-      nb->l=0;
-      nb->r=0;
-      nb->split_var=0;
-      nb->cut_val=0;
-      nb->step_height=step_height;
-      return true;
-   } else {
-      cout << "error in death, node is not a nog node\n";
-      return false;
-   }
+  bool is_nog = true;
+  if (left) {
+    if (left->left || right->left) is_nog = false;
+  } else {
+    is_nog = false; // Leaf node has no children
+  }
+  return is_nog;
 }
 
-//is the node a nog node
-bool StanTree::isnog() 
+size_t StanTree::NumberOfNogs()
 {
-   bool isnog=true;
-   if(l) {
-      if(l->l || r->l) isnog=false; //one of the children has children.
-   } else {
-      isnog=false; //no children
-   }
-   return isnog;
+  if (!left) return 0;
+  if (left->left || right->left) {
+    return left->NumberOfNogs() + right->NumberOfNogs();
+  } else {
+    return 1;
+  }
 }
 
-size_t StanTree::nnogs() 
+size_t StanTree::NumberOfLeaves()
 {
-   if(!l) return 0; //bottom node
-   if(l->l || r->l) { //not a nog
-      return (l->nnogs() + r->nnogs());
-   } else { //is a nog
-      return 1;
-   }
+  if (left == nullptr) return 1;
+  return left->NumberOfLeaves() + right->NumberOfLeaves();
 }
 
-size_t StanTree::nbots() 
+// Collect pointers to all leaf nodes.
+void StanTree::CollectLeaves(std::vector<StanTree*>& leaf_vector)
 {
-   if(l==0) { //if a bottom node
-      return 1;
-   } else {
-      return l->nbots() + r->nbots();
-   }
+  if (left) {
+    left->CollectLeaves(leaf_vector);
+    right->CollectLeaves(leaf_vector);
+  } else {
+    leaf_vector.push_back(this);
+  }
 }
 
-//get bottom nodes
-void StanTree::getbots(npv& bv)
+// Collect pointers to all no-grandchildren nodes.
+void StanTree::CollectNogs(std::vector<StanTree*>& nog_vector)
 {
-   if(l) { //have children
-      l->getbots(bv);
-      r->getbots(bv);
-   } else {
-      bv.push_back(this);
-   }
+  if (left) {
+    if (left->left || right->left) {
+      if (left->left)  left->CollectNogs(nog_vector);
+      if (right->left) right->CollectNogs(nog_vector);
+    } else {
+      nog_vector.push_back(this);
+    }
+  }
 }
 
-//get nog nodes
-void StanTree::getnogs(npv& nv)
+// Collect pointers to all nodes.
+void StanTree::CollectNodes(std::vector<StanTree*>& node_vector)
 {
-   if(l) { //have children
-      if((l->l) || (r->l)) {  //have grandchildren
-         if(l->l) l->getnogs(nv);
-         if(r->l) r->getnogs(nv);
-      } else {
-         nv.push_back(this);
-      }
-   }
+  node_vector.push_back(this);
+  if (left) {
+    left->CollectNodes(node_vector);
+    right->CollectNodes(node_vector);
+  }
 }
 
-//get all nodes
-void StanTree::getnodes(npv& v)
+void StanTree::CollectNodes(std::vector<const StanTree*>& node_vector) const
 {
-   v.push_back(this);
-   if(l) {
-      l->getnodes(v);
-      r->getnodes(v);
-   }
-}
-void StanTree::getnodes(cnpv& v)  const
-{
-   v.push_back(this);
-   if(l) {
-      l->getnodes(v);
-      r->getnodes(v);
-   }
+  node_vector.push_back(this);
+  if (left) {
+    left->CollectNodes(node_vector);
+    right->CollectNodes(node_vector);
+  }
 }
 
-StanTree::StanTree_p StanTree::bn(double *x,xinfo& xi)
+// Find the leaf reached by observation x using the given cutpoints.
+StanTree* StanTree::FindLeaf(double* x, CutpointMatrix& cutpoints)
 {
-   if(l==0) return this; //no children
-   if(x[split_var] < xi[split_var][cut_val]) {
-      return l->bn(x,xi);
-   } else {
-      return r->bn(x,xi);
-   }
+  if (left == nullptr) return this;
+  if (std::isnan(x[split_var])) {
+    // Missing data: no routing defined
+    return nullptr;
+  }
+  if (x[split_var] < cutpoints[split_var][cut_val]) {
+    return left->FindLeaf(x, cutpoints);
+  } else {
+    return right->FindLeaf(x, cutpoints);
+  }
 }
 
-//find region for a given variable
-void StanTree::rg(size_t split_var, int* L, int* U)
+// Narrow [lower_bound, upper_bound] for split_var by walking up the ancestors.
+void StanTree::FindRegionBounds(size_t split_var, int* lower_bound,
+                                int* upper_bound)
 {
-   if(this->p==0)  {
-      return;
-   }
-   if((this->p)->split_var == split_var) { //does my parent use split_var?
-      if(this == p->l) { //am I left or right child
-         if((int)(p->cut_val) <= (*U)) *U = (p->cut_val)-1;
-         p->rg(split_var,L,U);
-      } else {
-         if((int)(p->cut_val) >= *L) *L = (p->cut_val)+1;
-         p->rg(split_var,L,U);
-      }
-   } else {
-      p->rg(split_var,L,U);
-   }
+  if (this->parent == nullptr) return;
+  if ((this->parent)->split_var == split_var) {
+    if (this == parent->left) {
+      if ((int)(parent->cut_val) <= (*upper_bound))
+        *upper_bound = (parent->cut_val) - 1;
+      parent->FindRegionBounds(split_var, lower_bound, upper_bound);
+    } else {
+      if ((int)(parent->cut_val) >= *lower_bound)
+        *lower_bound = (parent->cut_val) + 1;
+      parent->FindRegionBounds(split_var, lower_bound, upper_bound);
+    }
+  } else {
+    parent->FindRegionBounds(split_var, lower_bound, upper_bound);
+  }
 }
 
-//cut back to one node
-void StanTree::tonull()
+// Reduce the tree to a single root node.
+void StanTree::Clear()
 {
-   size_t ts = StanTreesize();
-   //loop invariant: ts>=1
-   while(ts>1) { //if false ts=1
-      npv nv;
-      getnogs(nv);
-      for(size_t i=0;i<nv.size();i++) {
-         delete nv[i]->l;
-         delete nv[i]->r;
-         nv[i]->l=0;
-         nv[i]->r=0;
-      }
-      ts = StanTreesize(); //make invariant true
-   }
-   step_height=0.0;
-   split_var=0;cut_val=0;
-   p=0;l=0;r=0;
+  size_t tree_size = TreeSize();
+  while (tree_size > 1) {
+    std::vector<StanTree*> nog_vector;
+    CollectNogs(nog_vector);
+    for (size_t i = 0; i < nog_vector.size(); i++) {
+      delete nog_vector[i]->left;
+      delete nog_vector[i]->right;
+      nog_vector[i]->left  = nullptr;
+      nog_vector[i]->right = nullptr;
+    }
+    tree_size = TreeSize();
+  }
+  step_height = 0.0;
+  split_var   = 0;
+  cut_val     = 0;
+  parent = nullptr;
+  left   = nullptr;
+  right  = nullptr;
 }
 
-//copy StanTree StanTree o to StanTree n
-void StanTree::cp(StanTree_p n, StanTree_cp o)
-//assume n has no children (so we don't have to kill them)
-//recursion down
+// Deep-copy the tree rooted at source into destination.
+void StanTree::CopyTree(StanTree* destination, const StanTree* source)
 {
-   if(n->l) {
-      cout << "cp:error node has children\n";
-      return;
-   }
+  if (destination->left) {
+    Rcpp::warning("StanTree::CopyTree: destination node already has children");
+    return;
+  }
 
-   n->step_height = o->step_height;
-   n->split_var = o->split_var;
-   n->cut_val = o->cut_val;
+  destination->step_height = source->step_height;
+  destination->split_var   = source->split_var;
+  destination->cut_val     = source->cut_val;
 
-   if(o->l) { //if o has children
-      n->l = new StanTree;
-      (n->l)->p = n;
-      cp(n->l,o->l);
-      n->r = new StanTree;
-      (n->r)->p = n;
-      cp(n->r,o->r);
-   }
+  if (source->left) {
+    destination->left = new StanTree;
+    (destination->left)->parent = destination;
+    CopyTree(destination->left, source->left);
+
+    destination->right = new StanTree;
+    (destination->right)->parent = destination;
+    CopyTree(destination->right, source->right);
+  }
 }
 
-//operators
+// Assignment operator: clear this tree and deep-copy rhs.
 StanTree& StanTree::operator=(const StanTree& rhs)
 {
-   if(&rhs != this) {
-      tonull(); //kill left hand side (this)
-      cp(this,&rhs); //copy right hand side to left hand side
-   }
-   return *this;
-}
-
-//functions
-std::ostream& operator<<(std::ostream& os, const StanTree& t)
-{
-   StanTree::cnpv nds;
-   t.getnodes(nds);
-   os << nds.size() << std::endl;
-   for(size_t i=0;i<nds.size();i++) {
-      os << nds[i]->nid() << " ";
-      os << nds[i]->GetSplitVar() << " ";
-      os << nds[i]->GetCutVal() << " ";
-      os << nds[i]->gettheta() << std::endl;
-   }
-   return os;
-}
-std::istream& operator>>(std::istream& is, StanTree& t)
-{
-   size_t tid,pid; //tid: id of current node, pid: parent's id
-   std::map<size_t,StanTree::StanTree_p> pts;  //pointers to nodes indexed by node id
-   size_t nn; //number of nodes
-
-   t.tonull(); // obliterate old StanTree (if there)
-
-   //read number of nodes----------
-   is >> nn;
-   if(!is) {
-      //cout << ">> error: unable to read number of nodes" << endl;
-      return is;
-   }
-
-   //read in vector of node information----------
-   std::vector<node_info> nv(nn);
-   for(size_t i=0;i!=nn;i++) {
-      is >> nv[i].id >> nv[i].split_var >> nv[i].cut_val >> nv[i].step_height;
-      if(!is) {
-         //cout << ">> error: unable to read node info, on node  " << i+1 << endl;
-         return is;
-      }
-   }
-   //first node has to be the top one
-   pts[1] = &t; //careful! this is not the first pts, it is pointer of id 1.
-   t.setv(nv[0].split_var); t.setc(nv[0].cut_val); t.settheta(nv[0].step_height);
-   t.p=0;
-
-   //now loop through the rest of the nodes knowing parent is already there.
-   for(size_t i=1;i!=nv.size();i++) {
-      StanTree::StanTree_p np = new StanTree;
-      np->split_var = nv[i].split_var; np->cut_val=nv[i].cut_val; np->step_height=nv[i].step_height;
-      tid = nv[i].id;
-      pts[tid] = np;
-      pid = tid/2;
-      // set pointers
-      if(tid % 2 == 0) { //left child has even id
-         pts[pid]->l = np;
-      } else {
-         pts[pid]->r = np;
-      }
-      np->p = pts[pid];
-   }
-   return is;
-}
-
-//add children to bot node *np
-void StanTree::birthp(StanTree_p np,size_t split_var, size_t cut_val, double step_heightl, double step_heightr)
-{
-   StanTree_p l = new StanTree;
-   l->step_height=step_heightl;
-   StanTree_p r = new StanTree;
-   r->step_height=step_heightr;
-   np->l=l;
-   np->r=r;
-   np->split_var = split_var; np->cut_val=cut_val;
-   l->p = np;
-   r->p = np;
-}
-
-//kill children of  nog node *nb
-void StanTree::deathp(StanTree_p nb, double step_height)
-{
-   delete nb->l;
-   delete nb->r;
-   nb->l=0;
-   nb->r=0;
-   nb->split_var=0;
-   nb->cut_val=0;
-   nb->step_height=step_height;
-}
-
-size_t StanTree::getbadcut(size_t split_var){
-  StanTree_p par=this->getp();
-  if(par->GetSplitVar()==split_var)
-    return par->GetCutVal();
-  else
-    return par->getbadcut(split_var);
-}
-
-#ifndef NoRcpp   
-// instead of returning y.test, let's return StanTrees
-// this conveniently avoids the need for x.test
-// loosely based on pr() 
-// create an efficient list from a single StanTree
-// StanTree2list calls itself recursively
-Rcpp::List StanTree::StanTree2list(xinfo& xi, double center, double scale) {
-  Rcpp::List res;
-
-  // five possible scenarios
-  if(l) { // StanTree has branches
-    //double cut=xi[split_var][c];
-    size_t var=split_var, cut=cut_val;
-
-    var++; cut++; // increment from 0-based (C) to 1-based (R) array index
-
-    if(l->l && r->l)         // two sub-StanTrees
-      res=Rcpp::List::create(Rcpp::Named("var")=(int)var,
-			     //Rcpp::Named("cut")=cut,
-			     Rcpp::Named("cut")=(int)cut,
-			     Rcpp::Named("type")=1,
-			     Rcpp::Named("left")= l->StanTree2list(xi, center, scale),
-			     Rcpp::Named("right")=r->StanTree2list(xi, center, scale));   
-    else if(l->l && !(r->l)) // left sub-StanTree and right terminal
-      res=Rcpp::List::create(Rcpp::Named("var")=(int)var,
-			     //Rcpp::Named("cut")=cut,
-			     Rcpp::Named("cut")=(int)cut,
-			     Rcpp::Named("type")=2,
-			     Rcpp::Named("left")= l->StanTree2list(xi, center, scale),
-			     Rcpp::Named("right")=r->gettheta()*scale+center);    
-    else if(!(l->l) && r->l) // left terminal and right sub-StanTree
-      res=Rcpp::List::create(Rcpp::Named("var")=(int)var,
-			     //Rcpp::Named("cut")=cut,
-			     Rcpp::Named("cut")=(int)cut,
-			     Rcpp::Named("type")=3,
-			     Rcpp::Named("left")= l->gettheta()*scale+center,
-			     Rcpp::Named("right")=r->StanTree2list(xi, center, scale));
-    else                     // no sub-StanTrees 
-      res=Rcpp::List::create(Rcpp::Named("var")=(int)var,
-			     //Rcpp::Named("cut")=cut,
-			     Rcpp::Named("cut")=(int)cut,
-			     Rcpp::Named("type")=0,
-			     Rcpp::Named("left")= l->gettheta()*scale+center,
-			     Rcpp::Named("right")=r->gettheta()*scale+center);
+  if (&rhs != this) {
+    Clear();
+    CopyTree(this, &rhs);
   }
-  else // no branches
-    res=Rcpp::List::create(Rcpp::Named("var")=0, // var=0 means root
-			   //Rcpp::Named("cut")=0.,
-			   Rcpp::Named("cut")=0,
-			   Rcpp::Named("type")=0,
-			   Rcpp::Named("left") =step_height*scale+center,
-			   Rcpp::Named("right")=step_height*scale+center);
-
-  return res;
+  return *this;
 }
 
-// for one StanTree, count the number of branches for each variable
-Rcpp::IntegerVector StanTree::StanTree2count(size_t nvar) {
-  Rcpp::IntegerVector res(nvar);
+// Grow a leaf into an internal node via direct pointer.
+void StanTree::BirthAtNode(StanTree* leaf, size_t split_var, size_t cut_val,
+                           double left_step_height, double right_step_height)
+{
+  StanTree* left_child  = new StanTree;
+  left_child->step_height  = left_step_height;
+  StanTree* right_child = new StanTree;
+  right_child->step_height = right_step_height;
 
-  if(l) { // StanTree branches
-    res[split_var]++;
-    
-    if(l->l) res+=l->StanTree2count(nvar); // if left sub-StanTree
-    if(r->l) res+=r->StanTree2count(nvar); // if right sub-StanTree
-  } // else no branches and nothing to do
-
-  return res;
+  leaf->left      = left_child;
+  leaf->right     = right_child;
+  leaf->split_var = split_var;
+  leaf->cut_val   = cut_val;
+  left_child->parent  = leaf;
+  right_child->parent = leaf;
 }
-#endif
+
+// Remove the children of a nog node via direct pointer.
+void StanTree::DeathAtNode(StanTree* nog_node, double new_step_height)
+{
+  delete nog_node->left;
+  delete nog_node->right;
+  nog_node->left        = nullptr;
+  nog_node->right       = nullptr;
+  nog_node->split_var   = 0;
+  nog_node->cut_val     = 0;
+  nog_node->step_height = new_step_height;
+}
+
+// Return the cut value imposed by the nearest ancestor that splits on
+// split_var (used for the degenerate-tree augmentation strategy).
+size_t StanTree::GetConstrainedCut(size_t split_var)
+{
+  StanTree* ancestor = this->GetParent();
+  if (ancestor->GetSplitVar() == split_var)
+    return ancestor->GetCutVal();
+  else
+    return ancestor->GetConstrainedCut(split_var);
+}
 

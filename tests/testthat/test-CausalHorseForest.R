@@ -1,23 +1,23 @@
 test_that("CausalHorseForest works for continuous outcome", {
-  
+
   # Generate data
   n <- 50
   p <- 3
   X_control <- matrix(runif(n * p), ncol = p)
   X_treat   <- matrix(runif(n * p), ncol = p)
   treatment <- rbinom(n, 1, 0.5)
-  
+
   # True treatment effect
   tau <- 2
-  
+
   # Outcome: baseline + treatment effect + noise
   y <- X_control[, 1] + treatment * tau + rnorm(n)
-  
+
   # Test data
   X_test_control <- matrix(runif(n * p), ncol = p)
   X_test_treat   <- matrix(runif(n * p), ncol = p)
   treatment_test <- rbinom(n, 1, 0.5)
-  
+
   # Fit the model
   set.seed(1)
   fit <- CausalHorseForest(
@@ -66,9 +66,10 @@ test_that("CausalHorseForest works for continuous outcome", {
   expect_equal(dim(fit$test_predictions_sample_treat), c(10, n))
   
   # --- Numerical sanity checks ---
-  expect_false(any(is.na(unlist(fit))))
-  expect_false(any(is.nan(unlist(fit))))
-  expect_true(all(is.finite(unlist(fit))))
+  fit_numeric <- unlist(fit[vapply(fit, is.numeric, logical(1))])
+  expect_false(any(is.na(fit_numeric)))
+  expect_false(any(is.nan(fit_numeric)))
+  expect_true(all(is.finite(fit_numeric)))
   
   # Predictions are not all zero
   expect_true(sd(fit$train_predictions) > 0)
@@ -184,9 +185,10 @@ test_that("CausalHorseForest works for survival outcome", {
   expect_equal(dim(fit$test_predictions_sample_treat), c(10, n))
   
   # --- Numerical sanity checks ---
-  expect_false(any(is.na(unlist(fit))))
-  expect_false(any(is.nan(unlist(fit))))
-  expect_true(all(is.finite(unlist(fit))))
+  fit_numeric <- unlist(fit[vapply(fit, is.numeric, logical(1))])
+  expect_false(any(is.na(fit_numeric)))
+  expect_false(any(is.nan(fit_numeric)))
+  expect_true(all(is.finite(fit_numeric)))
   
   # Predictions are not all zero
   expect_true(sd(fit$train_predictions) > 0)
@@ -220,4 +222,176 @@ test_that("CausalHorseForest works for survival outcome", {
   expect_equal(fit$train_predictions, fit2$train_predictions)
 })
 
+
+# ── treatment_coding ──────────────────────────────────────────────────────────
+
+test_that("CausalHorseForest works with treatment_coding = 'binary'", {
+  n <- 50; p <- 3
+  X <- matrix(runif(n * p), ncol = p)
+  treatment <- rbinom(n, 1, 0.5)
+  y <- X[, 1] + treatment * 2 + rnorm(n)
+
+  set.seed(1)
+  fit <- CausalHorseForest(
+    y = y,
+    X_train_control = X, X_train_treat = X,
+    treatment_indicator_train = treatment,
+    outcome_type = "continuous",
+    treatment_coding = "binary",
+    number_of_trees = 5,
+    N_post = 10, N_burn = 5,
+    store_posterior_sample = TRUE,
+    verbose = FALSE
+  )
+
+  expect_s3_class(fit, "CausalShrinkageForest")
+  expect_equal(fit$treatment_coding, "binary")
+  expect_length(fit$train_predictions, n)
+  fit_numeric <- unlist(fit[vapply(fit, is.numeric, logical(1))])
+  expect_false(any(is.na(fit_numeric)))
+  expect_true(all(is.finite(fit_numeric)))
+  expect_true(sd(fit$train_predictions) > 0)
+})
+
+test_that("CausalHorseForest works with treatment_coding = 'adaptive'", {
+  n <- 50; p <- 3
+  X <- matrix(runif(n * p), ncol = p)
+  treatment <- rbinom(n, 1, X[, 1])
+  y <- X[, 1] + treatment * 2 + rnorm(n)
+  propensity <- X[, 1]  # true propensity
+
+  set.seed(1)
+  fit <- CausalHorseForest(
+    y = y,
+    X_train_control = X, X_train_treat = X,
+    treatment_indicator_train = treatment,
+    outcome_type = "continuous",
+    treatment_coding = "adaptive",
+    propensity = propensity,
+    number_of_trees = 5,
+    N_post = 10, N_burn = 5,
+    store_posterior_sample = TRUE,
+    verbose = FALSE
+  )
+
+  expect_s3_class(fit, "CausalShrinkageForest")
+  expect_equal(fit$treatment_coding, "adaptive")
+  expect_length(fit$train_predictions, n)
+  fit_numeric <- unlist(fit[vapply(fit, is.numeric, logical(1))])
+  expect_false(any(is.na(fit_numeric)))
+  expect_true(all(is.finite(fit_numeric)))
+  expect_true(sd(fit$train_predictions) > 0)
+})
+
+test_that("CausalHorseForest errors when adaptive coding used without propensity", {
+  n <- 30; p <- 3
+  X <- matrix(runif(n * p), ncol = p)
+  treatment <- rbinom(n, 1, 0.5)
+  y <- X[, 1] + treatment * 2 + rnorm(n)
+
+  expect_error(
+    CausalHorseForest(
+      y = y,
+      X_train_control = X, X_train_treat = X,
+      treatment_indicator_train = treatment,
+      outcome_type = "continuous",
+      treatment_coding = "adaptive",
+      number_of_trees = 5,
+      N_post = 10, N_burn = 5,
+      verbose = FALSE
+    ),
+    "propensity"
+  )
+})
+
+test_that("CausalHorseForest works with treatment_coding = 'invariant'", {
+  n <- 50; p <- 3
+  X <- matrix(runif(n * p), ncol = p)
+  treatment <- rbinom(n, 1, 0.5)
+  y <- X[, 1] + treatment * 2 + rnorm(n)
+
+  set.seed(1)
+  fit <- CausalHorseForest(
+    y = y,
+    X_train_control = X, X_train_treat = X,
+    treatment_indicator_train = treatment,
+    outcome_type = "continuous",
+    treatment_coding = "invariant",
+    number_of_trees = 5,
+    N_post = 10, N_burn = 5,
+    store_posterior_sample = TRUE,
+    verbose = FALSE
+  )
+
+  expect_s3_class(fit, "CausalShrinkageForest")
+  expect_equal(fit$treatment_coding, "invariant")
+  expect_length(fit$train_predictions, n)
+
+  # b0 and b1 posterior draws should be returned
+  expect_length(fit$b0, 10)
+  expect_length(fit$b1, 10)
+  expect_true(all(is.finite(fit$b0)))
+  expect_true(all(is.finite(fit$b1)))
+
+  fit_numeric <- unlist(fit[vapply(fit, is.numeric, logical(1))])
+  expect_false(any(is.na(fit_numeric)))
+  expect_true(all(is.finite(fit_numeric)))
+  expect_true(sd(fit$train_predictions) > 0)
+})
+
+
+# ── S3 class and methods ──────────────────────────────────────────────────────
+
+test_that("CausalHorseForest returns CausalShrinkageForest S3 object with working methods", {
+  n <- 30; p <- 3
+  X <- matrix(runif(n * p), ncol = p)
+  treatment <- rbinom(n, 1, 0.5)
+  y <- X[, 1] + treatment * 2 + rnorm(n)
+
+  set.seed(1)
+  fit <- CausalHorseForest(
+    y = y,
+    X_train_control = X, X_train_treat = X,
+    treatment_indicator_train = treatment,
+    outcome_type = "continuous",
+    number_of_trees = 5,
+    N_post = 10, N_burn = 5,
+    store_posterior_sample = TRUE,
+    verbose = FALSE
+  )
+
+  expect_s3_class(fit, "CausalShrinkageForest")
+  expect_no_error(capture.output(print(fit)))
+  expect_no_error(smry <- summary(fit))
+  expect_type(smry, "list")
+  expect_true(!is.null(smry$sigma))
+})
+
+
+# ── Multi-chain (n_chains) ────────────────────────────────────────────────────
+
+test_that("CausalHorseForest n_chains > 1 pools chains correctly", {
+  n <- 30; p <- 3
+  X <- matrix(runif(n * p), ncol = p)
+  treatment <- rbinom(n, 1, 0.5)
+  y <- X[, 1] + treatment * 2 + rnorm(n)
+
+  set.seed(1)
+  fit <- CausalHorseForest(
+    y = y,
+    X_train_control = X, X_train_treat = X,
+    treatment_indicator_train = treatment,
+    outcome_type = "continuous",
+    number_of_trees = 5,
+    N_post = 10, N_burn = 5,
+    n_chains = 2,
+    verbose = FALSE
+  )
+
+  expect_s3_class(fit, "CausalShrinkageForest")
+  expect_length(fit$sigma, 20)
+  expect_equal(fit$mcmc$n_chains, 2)
+  expect_length(fit$chains$acceptance_ratios_control, 2)
+  expect_length(fit$chains$acceptance_ratios_treat,   2)
+})
 

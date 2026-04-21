@@ -1,38 +1,38 @@
-# ShrinkageTrees <img src="https://img.shields.io/badge/R%3E%3D-4.2-blue" alt="R >= 4.2"> ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Lifecycle: maturing](https://img.shields.io/badge/lifecycle-maturing-blue) [![](https://cranlogs.r-pkg.org/badges/grand-total/ShrinkageTrees)](https://cran.r-project.org/package=ShrinkageTrees)
+# ShrinkageTrees <img src="https://img.shields.io/badge/R%3E%3D-4.1-blue" alt="R >= 4.1"> ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![Lifecycle: stable](https://img.shields.io/badge/lifecycle-stable-brightgreen) [![](https://cranlogs.r-pkg.org/badges/grand-total/ShrinkageTrees)](https://cran.r-project.org/package=ShrinkageTrees)
+
  <img src="sticker/ShrinkageTrees_hex.png" align="right" width="150"/>
 
 ## Overview
 
 **ShrinkageTrees** provides a unified framework for survival analysis using Bayesian regression tree ensembles, with a particular focus on **causal inference and high-dimensional data**.
 
-The package implements Horseshoe Trees, Causal Horseshoe Forests, and their more general counterparts — Shrinkage Trees and Causal Shrinkage Forests — alongside well-known Bayesian tree models such as BART, DART, and BCF. All models are adapted to right-censored data via accelerated failure time (AFT) formulations.
+The package implements Horseshoe Trees, Causal Horseshoe Forests, and their more general counterparts — Shrinkage Trees and Causal Shrinkage Forests — alongside well-known Bayesian tree models such as BART, DART, and BCF. All models are adapted to right-censored and interval-censored data via accelerated failure time (AFT) formulations.
 
 Its central methodological innovation is the **Horseshoe regularisation mechanism applied directly to tree step heights**, enabling adaptive global–local shrinkage in high-dimensional settings. In addition to classical BART priors, the package supports:
 
-- Horseshoe priors  
-- Forest-wide Horseshoe shrinkage  
-- Empirical Bayes Horseshoe calibration  
-- Half-Cauchy priors  
-- Dirichlet splitting priors (DART)  
+- Horseshoe priors
+- Forest-wide Horseshoe shrinkage
+- Empirical Bayes Horseshoe calibration
+- Half-Cauchy priors
+- Dirichlet splitting priors (DART)
 
 These models enable flexible non-linear modelling for:
 
-1) High-dimensional prediction  
-2) High-dimensional causal inference  
-3) Estimation of heterogeneous (conditional average) treatment effects (CATE)  
+1. High-dimensional prediction
+2. High-dimensional causal inference
+3. Estimation of heterogeneous (conditional average) treatment effects (CATE)
 
 Supported outcome types:
 
-- Continuous outcomes  
-- Binary outcomes  
-- **Right-censored survival times (AFT framework)**  
+- Continuous outcomes
+- Binary outcomes
+- **Right-censored and interval-censored survival times (AFT framework)**
 
 All models are implemented with an efficient C++ backend via Rcpp, allowing scalable MCMC sampling in high-dimensional settings.
 
+## ⭐ Core Contribution: Horseshoe Forests
 
-## ⭐ Core Contribution: Horseshoe Trees
-
-Traditional BART and DART primarily regularise model complexity through the **tree structure (e.g., depth constraints or splitting probabilities).
+Traditional BART and DART primarily regularise model complexity through the **tree structure** (e.g., depth constraints or splitting probabilities).
 
 ShrinkageTrees instead introduces global–local shrinkage directly on the leaf (step height) parameters via the Horseshoe prior.
 
@@ -42,11 +42,9 @@ This strategy retains all covariates, reduces noise in high-dimensional settings
 
 This methodology is introduced in:
 
-> *Horseshoe Forests for High-Dimensional Causal Survival Analysis*  
+> _Horseshoe Forests for High-Dimensional Causal Survival Analysis_  
 > T. Jacobs, W.N. van Wieringen, S.L. van der Pas  
 > https://arxiv.org/abs/2507.22004
-
-
 
 ## 🧠 Implemented Models
 
@@ -54,18 +52,18 @@ ShrinkageTrees implements a modular family of Bayesian tree models:
 
 ### Single-Forest Models
 
-- **HorseTrees** — BART with Horseshoe shrinkage on leaf parameters  
-- **DART** — Dirichlet prior on splitting probabilities  
-- **Standard BART** — Classical Gaussian leaf prior  
+- **HorseTrees** — BART with Horseshoe shrinkage on leaf parameters
+- **DART** — Dirichlet prior on splitting probabilities
+- **Standard BART** — Classical Gaussian leaf prior
 
 ### Causal Models (BCF-style decomposition)
 
-- **CausalHorseForest** — Prognostic + treatment forests with Horseshoe shrinkage  
-- **CausalShrinkageForest** — General shrinkage framework  
-- **BCF** — Bayesian Causal Forest for right-censored AFT models  
-- **Shrinkage BCF** — Combined structural and magnitude shrinkage  
+- **CausalHorseForest** — Prognostic + treatment forests with Horseshoe shrinkage
+- **CausalShrinkageForest** — General shrinkage framework
+- **BCF** — Bayesian Causal Forest for right-censored and interval-censored AFT models
+- **Shrinkage BCF** — Combined structural and magnitude shrinkage
 
-All causal models support right-censored survival data and heterogeneous treatment effect (CATE) estimation.
+All causal models support right-censored and interval-censored survival data and heterogeneous treatment effect (CATE) estimation.
 
 ## 🌲 Tree Regularisation Strategies
 
@@ -83,7 +81,6 @@ ShrinkageTrees supports multiple regularisation mechanisms:
 - **Alternative shrinkage priors on step heights**  
   Including global Cauchy and forest-wide shrinkage formulations for flexible control of overall regularisation strength.
 
-
 ## 📦 Installation
 
 The released version of ShrinkageTrees can be installed from [CRAN](https://cran.r-project.org/package=ShrinkageTrees):
@@ -99,7 +96,6 @@ You can install the development version from [GitHub](https://github.com/tijn-ja
 install.packages("devtools")
 devtools::install_github("tijn-jacobs/ShrinkageTrees")
 ```
-
 
 ## 🚀 Example
 
@@ -149,20 +145,36 @@ ATE_horseshoe <- mean(post_ATE_horseshoe)
 
 # Plot the posterior of the ATE
 ```
+
 ![Posterior ATE plot](man/figures/posterior_ate_plot.png)
+
+## 📊 Included Datasets
+
+The package ships with two TCGA datasets for high-dimensional survival analysis and causal inference:
+
+| Dataset   | Cancer            | n   | Covariates              | Treatment                |
+| --------- | ----------------- | --- | ----------------------- | ------------------------ |
+| `pdac`    | Pancreatic (PAAD) | 178 | ~3,000 genes + clinical | Radiation vs control     |
+| `ovarian` | Ovarian (OV)      | 357 | 2,000 genes + clinical  | Carboplatin vs cisplatin |
+
+```r
+data("pdac")     # data frame with time, status, treatment, gene expression, ...
+data("ovarian")  # data frame with OS_time, OS_event, treatment, clinical vars, and gene expression columns
+```
 
 ## 🩺 Pancreatic Cancer Analysis Demo
 
-The package includes a **demo analysis** based on the TCGA PAAD (pancreatic cancer) dataset to showcase how ShrinkageTrees can be used in practice. This demo replicates the main case study from the preprint *"Horseshoe Forests for High-Dimensional Causal Survival Analysis"* ([arXiv:2507.22004](https://arxiv.org/abs/2507.22004)).
+The package includes a **demo analysis** based on the TCGA PAAD (pancreatic cancer) dataset to showcase how ShrinkageTrees can be used in practice. This demo replicates the main case study from the preprint _"Horseshoe Forests for High-Dimensional Causal Survival Analysis"_ ([arXiv:2507.22004](https://arxiv.org/abs/2507.22004)).
 
 The demo:
-- Estimates propensity scores for treatment assignment  
-- Fits a Causal Horseshoe Forest to the survival times with right-censoring  
-- Computes the posterior mean ATE and individual CATEs with 95% credible intervals  
+
+- Estimates propensity scores for treatment assignment
+- Fits a Causal Horseshoe Forest to the survival times with right-censoring or interval-censoring
+- Computes the posterior mean ATE and individual CATEs with 95% credible intervals
 - Produces diagnostic plots (propensity score overlap, posterior ATE, CATE estimates, sigma trace)
 
-
 You can run it directly from R after installing the package:
+
 ```r
 demo("pdac_analysis", package = "ShrinkageTrees")
 ```
@@ -171,17 +183,17 @@ demo("pdac_analysis", package = "ShrinkageTrees")
 
 ShrinkageTrees provides:
 
-- Bayesian Causal Forests for right-censored survival data  
-- Dirichlet splitting priors for structural sparsity  
-- Horseshoe shrinkage applied directly to tree step heights  
-- A unified AFT-based framework for heterogeneous treatment effects  
+- Bayesian Causal Forests for right-censored and interval-censored survival data
+- Dirichlet splitting priors for structural sparsity
+- Horseshoe shrinkage applied directly to tree step heights
+- A unified AFT-based framework for heterogeneous treatment effects
 
 To our knowledge, no other R package combines:
 
-- BCF  
-- DART  
-- Horseshoe leaf shrinkage  
-- Survival data support  
+- BCF
+- DART
+- Horseshoe leaf shrinkage
+- Survival data support
 
 within a single coherent Bayesian tree framework.
 
@@ -191,17 +203,14 @@ within a single coherent Bayesian tree framework.
 - For survival-specific Bayesian tree functions, see: `?SurvivalBART`, `?SurvivalDART`, `?SurvivalBCF`, and `?SurvivalShrinkageBCF`.
 - Examples and parameter descriptions can be found in each function’s documentation.
 
-
 ## 🤝 Contributing
 
-Contributions are welcome! Feel free to open an [issue](https://github.com/tijn-jacobs/ShrinkageTrees/issues) or submit a pull request. 
+Contributions are welcome! Feel free to open an [issue](https://github.com/tijn-jacobs/ShrinkageTrees/issues) or submit a pull request.
 The software is designed to be flexible and modular, allowing for a wide variety of global-local shrinkage priors to be easily implemented and extended in future versions.
-
 
 ## 📜 License
 
 This package is licensed under the [MIT License](https://cran.r-project.org/web/licenses/MIT).
-
 
 ## 🇪🇺 Acknowledgments
 

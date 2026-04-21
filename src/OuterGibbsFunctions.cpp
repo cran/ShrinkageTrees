@@ -116,16 +116,20 @@ void AugmentCensoredObservations(
       U = random.uniform();
       prediction = predicted_time[i];
 
-      const double a  = (observed_right_time[i] - prediction) / sigma; // R bound
+      double a  = (observed_right_time[i] - prediction) / sigma; // R bound
+
+      // Cap at 4 to avoid numerical issues (Fa too close to 1.0),
+      // especially in early MCMC iterations
+      if (a > 4.0) a = 4.0;
+
       const double Fa = standard_normal_cdf(a);
 
       // Uniform over [Fa, 1]
-      // (tiny guard in case Fa is numerically 1.0)
-      if (Fa >= 1.0) {
-        temporary = std::nextafter(1.0, 0.0);
-      } else {
-        temporary = Fa + U * (1.0 - Fa);
-      }
+      temporary = Fa + U * (1.0 - Fa);
+
+      // Clamp into (0, 1) for the quantile function
+      temporary = std::max(temporary, std::nextafter(0.0, 1.0));
+      temporary = std::min(temporary, std::nextafter(1.0, 0.0));
 
       event_time[i] = prediction + sigma * standard_normal_quantile(temporary);
     }
@@ -155,6 +159,10 @@ void AugmentCensoredObservations(
         // uniform on [Fa, Fb]
         temporary = Fa + U * width;
       }
+
+      // Clamp into (0, 1) for the quantile function
+      temporary = std::max(temporary, std::nextafter(0.0, 1.0));
+      temporary = std::min(temporary, std::nextafter(1.0, 0.0));
 
       // Map back to the original scale
       event_time[i] = prediction + sigma * standard_normal_quantile(temporary);
@@ -197,6 +205,57 @@ void UpdateSigma(
   }
 }
 
+void UpdateInvariantCoding(
+  double& b0,
+  double& b1,
+  double* b_train,
+  double* b_test,
+  const double* y,
+  const double* prediction_control,
+  const double* prediction_treat,
+  const int* treatment_indicator,
+  const int* treatment_indicator_test,
+  const size_t n,
+  const size_t n_test,
+  const double sigma,
+  Random& random
+) {
+
+  double sigma2 = sigma * sigma;
+
+  // Sufficient statistics for b1 (treated: z_i = 1) and b0 (control: z_i = 0)
+  double sum_tau2_treated = 0.0, sum_tau_resid_treated = 0.0;
+  double sum_tau2_control = 0.0, sum_tau_resid_control = 0.0;
+
+  for (size_t k = 0; k < n; k++) {
+    double tau_k  = prediction_treat[k];
+    double resid_k = y[k] - prediction_control[k];
+    if (treatment_indicator[k] == 1) {
+      sum_tau2_treated    += tau_k * tau_k;
+      sum_tau_resid_treated += tau_k * resid_k;
+    } else {
+      sum_tau2_control    += tau_k * tau_k;
+      sum_tau_resid_control += tau_k * resid_k;
+    }
+  }
+
+  // Posterior for b1: prior precision = 1/(1/2) = 2
+  double prec1 = 2.0 + sum_tau2_treated / sigma2;
+  double mean1 = (sum_tau_resid_treated / sigma2) / prec1;
+  b1 = mean1 + random.normal() / std::sqrt(prec1);
+
+  // Posterior for b0: prior precision = 1/(1/2) = 2
+  double prec0 = 2.0 + sum_tau2_control / sigma2;
+  double mean0 = (sum_tau_resid_control / sigma2) / prec0;
+  b0 = mean0 + random.normal() / std::sqrt(prec0);
+
+  // Recompute b_train and b_test from the new draws
+  for (size_t k = 0; k < n; k++)
+    b_train[k] = (treatment_indicator[k] == 1) ? b1 : b0;
+  for (size_t k = 0; k < n_test; k++)
+    b_test[k] = (treatment_indicator_test[k] == 1) ? b1 : b0;
+}
+
 void UpdateForestwideShrinkage(
   string prior_type,
   std::vector<Tree>* all_trees,
@@ -237,4 +296,5 @@ void UpdateForestwideShrinkage(
     tree.SetGlobalParameters(0, forestwide_shrinkage);
   }
 }
+
 

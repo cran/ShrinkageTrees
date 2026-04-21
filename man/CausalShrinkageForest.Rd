@@ -5,7 +5,7 @@
 \title{General Causal Shrinkage Forests}
 \usage{
 CausalShrinkageForest(
-  y,
+  y = NULL,
   status = NULL,
   X_train_control,
   X_train_treat,
@@ -13,6 +13,8 @@ CausalShrinkageForest(
   X_test_control = NULL,
   X_test_treat = NULL,
   treatment_indicator_test = NULL,
+  left_time = NULL,
+  right_time = NULL,
   outcome_type = "continuous",
   timescale = "time",
   number_of_trees_control = 200,
@@ -42,14 +44,22 @@ CausalShrinkageForest(
   N_burn = 5000,
   delayed_proposal = 5,
   store_posterior_sample = FALSE,
+  treatment_coding = "centered",
+  propensity = NULL,
+  propensity_test = NULL,
+  n_chains = 1,
   verbose = TRUE
 )
 }
 \arguments{
-\item{y}{Outcome vector. Numeric. Represents continuous outcomes or follow-up times.}
+\item{y}{Outcome vector. Numeric. Represents continuous outcomes or follow-up times.
+Set to \code{NULL} when using \code{outcome_type = "interval-censored"}, as
+values are derived from \code{left_time} and \code{right_time}.}
 
 \item{status}{Optional event indicator vector (1 = event occurred, 0 = censored).
-Required when \code{outcome_type = "right-censored"}.}
+Required when \code{outcome_type = "right-censored"}. For interval-censored
+outcomes, this is derived automatically from \code{left_time} and
+\code{right_time}.}
 
 \item{X_train_control}{Covariate matrix for the control forest. Rows correspond to samples,
 columns to covariates.}
@@ -67,18 +77,31 @@ column means of \code{X_train_treat} if NULL.}
 
 \item{treatment_indicator_test}{Optional vector indicating treatment assignment for test data.}
 
-\item{outcome_type}{Type of outcome: one of \code{"continuous"} or \code{"right-censored"}.
+\item{left_time}{Optional numeric vector of left (lower) time boundaries.
+Required when \code{outcome_type = "interval-censored"}. Exact events
+have \code{left_time == right_time}; right-censored observations have
+\code{right_time = Inf}; interval-censored observations have finite
+\code{left_time < right_time}.}
+
+\item{right_time}{Optional numeric vector of right (upper) time boundaries.
+Required when \code{outcome_type = "interval-censored"}. Use \code{Inf}
+for right-censored observations.}
+
+\item{outcome_type}{Type of outcome: one of \code{"continuous"},
+\code{"right-censored"}, or \code{"interval-censored"}.
 Default is \code{"continuous"}.}
 
 \item{timescale}{For survival outcomes: either \code{"time"} (original scale, log-transformed
-internally) or \code{"log"} (already log-transformed). Default is \code{"time"}.}
+internally) or \code{"log"} (already log-transformed). Default is \code{"time"}.
+Used when \code{outcome_type} is \code{"right-censored"} or
+\code{"interval-censored"}.}
 
 \item{number_of_trees_control}{Number of trees in the control forest. Default is 200.}
 
 \item{number_of_trees_treat}{Number of trees in the treatment forest. Default is 200.}
 
 \item{prior_type_control}{Type of prior on control forest step heights. One of
-\code{"horseshoe"}, \code{"horseshoe_fw"}, \code{"horseshoe_EB"}, or \code{"half-cauchy"}.
+\code{"horseshoe"}, \code{"horseshoe_fw"}, or \code{"half-cauchy"}.
 Default is \code{"horseshoe"}.}
 
 \item{prior_type_treat}{Type of prior on treatment forest step heights. Same options as
@@ -145,10 +168,37 @@ number of covariates in the treatment forest if not specified.}
 \item{store_posterior_sample}{Logical; whether to store posterior samples of predictions.
 Default is \code{FALSE}.}
 
+\item{treatment_coding}{Treatment coding scheme for the two-forest model.
+One of \code{"centered"} (default), \code{"binary"}, \code{"adaptive"},
+or \code{"invariant"}.
+\code{"centered"} uses \eqn{b_i \in \{-1/2, 1/2\}};
+\code{"binary"} uses \eqn{b_i \in \{0, 1\}};
+\code{"adaptive"} uses \eqn{b_i = A_i - \hat{e}(x_i)} where
+\eqn{\hat{e}(x_i)} is the estimated propensity score;
+\code{"invariant"} treats \eqn{b_0, b_1} as parameters estimated within
+the Gibbs sampler with \eqn{b_j \sim N(0, 1/2)} priors, yielding a
+parameterisation-invariant model (Hahn et al., 2020, Section 5.2).}
+
+\item{propensity}{Optional numeric vector of propensity scores
+\eqn{\hat{e}(x_i)} for training observations. Required when
+\code{treatment_coding = "adaptive"}.}
+
+\item{propensity_test}{Optional numeric vector of propensity scores for
+test observations. Only used when \code{treatment_coding = "adaptive"}.
+Defaults to \code{0.5} for all test observations if not provided.}
+
+\item{n_chains}{Number of independent MCMC chains to run. Default is
+\code{1} (standard single-chain behaviour). When \code{n_chains > 1} the
+chains are run in parallel via \code{parallel::mclapply} and their
+posterior samples are pooled into a single \code{CausalShrinkageForest}
+object, so all existing \code{print} and \code{summary} methods work
+without modification. On Windows, \code{mclapply} falls back to
+sequential execution.}
+
 \item{verbose}{Logical; whether to print verbose output. Default is \code{TRUE}.}
 }
 \value{
-A list containing:
+An S3 object of class \code{"CausalShrinkageForest"} containing:
 \describe{
 \item{train_predictions}{Posterior mean predictions on training data (combined forest).}
 \item{test_predictions}{Posterior mean predictions on test data (combined forest).}
@@ -173,7 +223,7 @@ A list containing:
 Fits a (Bayesian) Causal Shrinkage Forest model for estimating heterogeneous treatment effects.
 This function generalizes \code{\link{CausalHorseForest}} by allowing flexible
 global-local shrinkage priors on the step heights in both the control and treatment forests.
-It supports continuous and right-censored survival outcomes.
+It supports continuous, right-censored, and interval-censored survival outcomes.
 }
 \details{
 This function is a flexible generalization of \code{CausalHorseForest}.
@@ -195,13 +245,6 @@ The \code{horseshoe_fw} prior (forest-wide horseshoe) is similar to
 \code{horseshoe}, except that the global shrinkage parameter is shared
 across all trees in the forest simultaneously.
 
-The \code{horseshoe_EB} prior is an empirical Bayes variant of the
-\code{horseshoe} prior. Here, the global shrinkage parameter (\eqn{\tau})
-is not assigned a prior distribution but instead must be specified directly
-using \code{global_hp}, while local shrinkage parameters still follow
-half-Cauchy priors. Note: \eqn{\tau} must be provided by the user; it is
-not estimated by the software.
-
 The \code{half-cauchy} prior considers only local shrinkage and does not
 include a global shrinkage component. It places a half-Cauchy prior on each
 local shrinkage parameter with scale hyperparameter \code{local_hp}.
@@ -213,7 +256,7 @@ whose concentration is controlled by a Beta sparsity parameter
 \code{rho_dirichlet}.
 }
 \examples{
-# Example: Continuous outcome, homogenuous treatment effect, two priors
+# Example: Continuous outcome, homogeneous treatment effect, two priors
 n <- 50
 p <- 3
 X <- matrix(runif(n * p), ncol = p)
@@ -272,6 +315,28 @@ post_ATE_halfcauchy <- rowMeans(fit_halfcauchy$train_predictions_sample_treat)
 ATE_horseshoe <- mean(post_ATE_horseshoe)
 ATE_halfcauchy <- mean(post_ATE_halfcauchy)
 
+# Example: Interval-censored causal survival outcome
+n <- 50; p <- 3
+X_ic <- matrix(rnorm(n * p), ncol = p)
+treat_ic <- rbinom(n, 1, 0.5)
+true_t <- rexp(n, rate = exp(-X_ic[, 1] - 0.5 * treat_ic))
+left_t  <- true_t * runif(n, 0.5, 1)
+right_t <- true_t * runif(n, 1, 1.5)
+exact <- sample(n, 15)
+left_t[exact] <- true_t[exact]; right_t[exact] <- true_t[exact]
+rc <- sample(setdiff(seq_len(n), exact), 10); right_t[rc] <- Inf
+
+fit_ic <- CausalShrinkageForest(
+  left_time = left_t, right_time = right_t,
+  X_train_control = X_ic, X_train_treat = X_ic,
+  treatment_indicator_train = treat_ic,
+  outcome_type = "interval-censored",
+  number_of_trees_control = 5, number_of_trees_treat = 5,
+  prior_type_control = "horseshoe", prior_type_treat = "horseshoe",
+  local_hp_control = 0.1/sqrt(5), local_hp_treat = 0.1/sqrt(5),
+  global_hp_control = 0.1/sqrt(5), global_hp_treat = 0.1/sqrt(5),
+  N_post = 10, N_burn = 5,
+  store_posterior_sample = TRUE, verbose = FALSE)
 
 }
 \references{
@@ -287,6 +352,14 @@ prediction and variable selection.} Journal of the American Statistical
 Association.
 }
 \seealso{
-\code{\link{CausalHorseForest}}, \code{\link{ShrinkageTrees}},
-\code{\link{HorseTrees}}
+Model family: \code{\link{CausalHorseForest}} (causal, horseshoe prior),
+\code{\link{ShrinkageTrees}} (non-causal, flexible prior),
+\code{\link{HorseTrees}} (non-causal, horseshoe prior).
+
+Survival wrappers: \code{\link{SurvivalBCF}}, \code{\link{SurvivalShrinkageBCF}}.
+
+S3 methods: \code{\link{print.CausalShrinkageForest}},
+\code{\link{summary.CausalShrinkageForest}},
+\code{\link{predict.CausalShrinkageForest}},
+\code{\link{plot.CausalShrinkageForest}}.
 }

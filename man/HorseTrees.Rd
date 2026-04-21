@@ -5,10 +5,12 @@
 \title{Horseshoe Regression Trees (HorseTrees)}
 \usage{
 HorseTrees(
-  y,
+  y = NULL,
   status = NULL,
   X_train,
   X_test = NULL,
+  left_time = NULL,
+  right_time = NULL,
   outcome_type = "continuous",
   timescale = "time",
   number_of_trees = 200,
@@ -24,16 +26,20 @@ HorseTrees(
   N_burn = 1000,
   delayed_proposal = 5,
   store_posterior_sample = TRUE,
-  seed = NULL,
+  n_chains = 1,
   verbose = TRUE
 )
 }
 \arguments{
 \item{y}{Outcome vector. Numeric. Can represent continuous outcomes, binary
-outcomes (0/1), or follow-up times for survival data.}
+outcomes (0/1), or follow-up times for survival data. Set to \code{NULL}
+(default) when using \code{outcome_type = "interval-censored"}, as values
+are derived from \code{left_time} and \code{right_time}.}
 
 \item{status}{Optional censoring indicator vector (1 = event occurred,
-0 = censored). Required if \code{outcome_type = "right-censored"}.}
+0 = censored). Required if \code{outcome_type = "right-censored"}.
+For interval-censored outcomes, this is derived automatically from
+\code{left_time} and \code{right_time}.}
 
 \item{X_train}{Covariate matrix for training. Each row corresponds to an
 observation, and each column to a covariate.}
@@ -41,13 +47,23 @@ observation, and each column to a covariate.}
 \item{X_test}{Optional covariate matrix for test data. If NULL, defaults to
 the mean of the training covariates.}
 
-\item{outcome_type}{Type of outcome. One of \code{"continuous"}, \code{"binary"}, or
-\code{"right-censored"}.}
+\item{left_time}{Optional numeric vector of left (lower) time boundaries.
+Required when \code{outcome_type = "interval-censored"}. Exact events
+have \code{left_time == right_time}; right-censored observations have
+\code{right_time = Inf}; interval-censored observations have finite
+\code{left_time < right_time}.}
+
+\item{right_time}{Optional numeric vector of right (upper) time boundaries.
+Required when \code{outcome_type = "interval-censored"}. Use \code{Inf}
+for right-censored observations.}
+
+\item{outcome_type}{Type of outcome. One of \code{"continuous"},
+\code{"binary"}, \code{"right-censored"}, or \code{"interval-censored"}.}
 
 \item{timescale}{Indicates the scale of follow-up times. Options are
 \code{"time"} (nonnegative follow-up times, will be log-transformed internally)
 or \code{"log"} (already log-transformed). Only used when
-\code{outcome_type = "right-censored"}.}
+\code{outcome_type = "right-censored"} or \code{"interval-censored"}.}
 
 \item{number_of_trees}{Number of trees in the ensemble. Default is 200.}
 
@@ -84,12 +100,18 @@ for reversible updates. Default is 5.}
 \item{store_posterior_sample}{Logical; whether to store posterior samples for
 each iteration. Default is TRUE.}
 
-\item{seed}{Random seed for reproducibility.}
+\item{n_chains}{Number of independent MCMC chains to run. Default is
+\code{1} (standard single-chain behaviour). When \code{n_chains > 1} the
+chains are run in parallel via \code{parallel::mclapply} and their
+posterior samples are pooled into a single \code{ShrinkageTrees} object,
+so all existing \code{print}, \code{summary}, and \code{predict} methods
+work without modification. On Windows, \code{mclapply} falls back to
+sequential execution.}
 
 \item{verbose}{Logical; whether to print verbose output. Default is TRUE.}
 }
 \value{
-A named list with the following elements:
+An S3 object of class \code{"ShrinkageTrees"} with the following elements:
 \describe{
 \item{train_predictions}{Vector of posterior mean predictions on the
 training data.}
@@ -119,7 +141,7 @@ probabilities (only for \code{outcome_type = "binary"} and if
 Fits a Bayesian Horseshoe Trees model with a single learner.
 Implements regularization on the step heights using a global-local Horseshoe
 prior, controlled via the parameter \code{k}. Supports continuous, binary,
-and right-censored (survival) outcomes.
+right-censored, and interval-censored (survival) outcomes.
 }
 \details{
 For continuous outcomes, the model centers and optionally standardizes the
@@ -127,6 +149,10 @@ outcome using a prior guess of the standard deviation.
 For binary outcomes, the function uses a probit link formulation.
 For right-censored outcomes (survival data), the function can handle
 follow-up times either on the original time scale or log-transformed.
+For interval-censored outcomes, provide \code{left_time} and
+\code{right_time} instead of \code{y} and \code{status}; the event
+indicators are derived internally following the
+\code{survival::Surv(type = "interval2")} convention.
 Generalized implementation with multiple prior possibilities is given by
 \code{\link{ShrinkageTrees}}.
 }
@@ -151,8 +177,20 @@ fit2 <- HorseTrees(y = y, X_train = X, outcome_type = "binary",
 X <- matrix(rnorm(n * p), ncol = p)
 time <- rexp(n, rate = 0.1)
 status <- rbinom(n, 1, 0.7)
-fit3 <- HorseTrees(y = time, status = status, X_train = X, 
-                   outcome_type = "right-censored", number_of_trees = 5, 
+fit3 <- HorseTrees(y = time, status = status, X_train = X,
+                   outcome_type = "right-censored", number_of_trees = 5,
+                   N_post = 75, N_burn = 25, verbose = FALSE)
+
+# Minimal example: interval-censored outcome
+X <- matrix(rnorm(n * p), ncol = p)
+true_t <- rexp(n, rate = 0.1)
+left_t  <- true_t * runif(n, 0.5, 1)
+right_t <- true_t * runif(n, 1, 1.5)
+# Mark some as exact, some as right-censored
+exact <- sample(n, 8); left_t[exact] <- true_t[exact]; right_t[exact] <- true_t[exact]
+rc <- sample(setdiff(seq_len(n), exact), 5); right_t[rc] <- Inf
+fit4 <- HorseTrees(left_time = left_t, right_time = right_t, X_train = X,
+                   outcome_type = "interval-censored", number_of_trees = 5,
                    N_post = 75, N_burn = 25, verbose = FALSE)
 
 # Larger continuous example (not run automatically)
@@ -163,7 +201,7 @@ X <- matrix(rnorm(100 * p), ncol = p)
 X_test <- matrix(rnorm(50 * p), ncol = p)
 y <- X[, 1] + X[, 2] - X[, 3] + rnorm(100, sd = 0.5)
 
-fit4 <- HorseTrees(y = y,
+fit5 <- HorseTrees(y = y,
                    X_train = X,
                    X_test = X_test,
                    outcome_type = "continuous",
@@ -183,5 +221,14 @@ hist(fit4$train_predictions_sample[, 1],
                        
 }
 \seealso{
-\code{\link{ShrinkageTrees}}, \code{\link{CausalHorseForest}}, \code{\link{CausalShrinkageForest}}
+Model family: \code{\link{ShrinkageTrees}} (flexible prior choice),
+\code{\link{CausalHorseForest}} (causal inference),
+\code{\link{CausalShrinkageForest}} (causal, flexible prior).
+
+Survival wrappers: \code{\link{SurvivalBART}}, \code{\link{SurvivalDART}}.
+
+S3 methods: \code{\link{print.ShrinkageTrees}},
+\code{\link{summary.ShrinkageTrees}},
+\code{\link{predict.ShrinkageTrees}},
+\code{\link{plot.ShrinkageTrees}}.
 }

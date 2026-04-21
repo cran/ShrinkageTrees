@@ -5,10 +5,12 @@
 \title{General Shrinkage Regression Trees (ShrinkageTrees)}
 \usage{
 ShrinkageTrees(
-  y,
+  y = NULL,
   status = NULL,
   X_train,
   X_test = NULL,
+  left_time = NULL,
+  right_time = NULL,
   outcome_type = "continuous",
   timescale = "time",
   number_of_trees = 200,
@@ -29,15 +31,20 @@ ShrinkageTrees(
   N_burn = 1000,
   delayed_proposal = 5,
   store_posterior_sample = TRUE,
+  n_chains = 1,
   verbose = TRUE
 )
 }
 \arguments{
 \item{y}{Outcome vector. Numeric. Can represent continuous outcomes, binary
-outcomes (0/1), or follow-up times for survival data.}
+outcomes (0/1), or follow-up times for survival data. Set to \code{NULL}
+when using \code{outcome_type = "interval-censored"}, as values are derived
+from \code{left_time} and \code{right_time}.}
 
 \item{status}{Optional censoring indicator vector (1 = event occurred,
-0 = censored). Required if \code{outcome_type = "right-censored"}.}
+0 = censored). Required if \code{outcome_type = "right-censored"}.
+For interval-censored outcomes, this is derived automatically from
+\code{left_time} and \code{right_time}.}
 
 \item{X_train}{Covariate matrix for training. Each row corresponds to an
 observation, and each column to a covariate.}
@@ -45,18 +52,29 @@ observation, and each column to a covariate.}
 \item{X_test}{Optional covariate matrix for test data. If NULL, defaults to
 the mean of the training covariates.}
 
-\item{outcome_type}{Type of outcome. One of \code{"continuous"}, \code{"binary"}, or
-\code{"right-censored"}.}
+\item{left_time}{Optional numeric vector of left (lower) time boundaries.
+Required when \code{outcome_type = "interval-censored"}. Exact events
+have \code{left_time == right_time}; right-censored observations have
+\code{right_time = Inf}; interval-censored observations have finite
+\code{left_time < right_time}.}
+
+\item{right_time}{Optional numeric vector of right (upper) time boundaries.
+Required when \code{outcome_type = "interval-censored"}. Use \code{Inf}
+for right-censored observations.}
+
+\item{outcome_type}{Type of outcome. One of \code{"continuous"},
+\code{"binary"}, \code{"right-censored"}, or \code{"interval-censored"}.}
 
 \item{timescale}{Indicates the scale of follow-up times. Options are
-\code{"time"} (nonnegative follow-up times, will be log-transformed internally)
-or \code{"log"} (already log-transformed). Only used when
-\code{outcome_type = "right-censored"}.}
+\code{"time"} (nonnegative follow-up times, will be log-transformed
+internally) or \code{"log"} (already log-transformed). Used when
+\code{outcome_type} is \code{"right-censored"} or
+\code{"interval-censored"}.}
 
 \item{number_of_trees}{Number of trees in the ensemble. Default is 200.}
 
 \item{prior_type}{Type of prior on the step heights. Options include
-\code{"horseshoe"}, \code{"horseshoe_fw"}, \code{"horseshoe_EB"}, \code{"half-cauchy"},
+\code{"horseshoe"}, \code{"horseshoe_fw"}, \code{"half-cauchy"},
 \code{"standard"} and \code{"dirichlet"}.}
 
 \item{local_hp}{Local hyperparameter controlling shrinkage on individual
@@ -68,15 +86,15 @@ Must be specified for Horseshoe-type priors; ignored for
 \code{prior_type = "half-cauchy"} or \code{"standard"}.}
 
 \item{a_dirichlet}{First shape parameter of the Beta prior used in the
-Dirichlet–Sparse splitting rule. Together with \code{b_dirichlet_control}, it
-controls the expected sparsity level. Only when "prior_type = "dirichlet"`.}
+Dirichlet-Sparse splitting rule. Together with \code{b_dirichlet}, it
+controls the expected sparsity level. Only when \code{prior_type = "dirichlet"}.}
 
 \item{b_dirichlet}{Second shape parameter of the Beta prior for the
 sparsity level. Larger values shrink splitting probabilities more strongly
-toward uniform sparsity.  Only when "prior_type = "dirichlet"`.}
+toward uniform sparsity. Only when \code{prior_type = "dirichlet"}.}
 
 \item{rho_dirichlet}{Sparsity hyperparameter. If left NULL, it defaults to
-the number of covariates in the control forest.  Only when "prior_type = "dirichlet"`.}
+the number of covariates. Only when \code{prior_type = "dirichlet"}.}
 
 \item{power}{Power parameter for the tree structure prior. Default is 2.0.}
 
@@ -103,10 +121,18 @@ for reversible updates. Default is 5.}
 \item{store_posterior_sample}{Logical; whether to store posterior samples for
 each iteration. Default is TRUE.}
 
+\item{n_chains}{Number of independent MCMC chains to run. Default is
+\code{1} (standard single-chain behaviour). When \code{n_chains > 1} the
+chains are run in parallel via \code{parallel::mclapply} and their
+posterior samples are pooled into a single \code{ShrinkageTrees} object,
+so all existing \code{print}, \code{summary}, and \code{predict} methods
+work without modification. On Windows, \code{mclapply} falls back to
+sequential execution.}
+
 \item{verbose}{Logical; whether to print verbose output. Default is TRUE.}
 }
 \value{
-A named list with the following elements:
+An S3 object of class "ShrinkageTrees" containing the following elements:
 \describe{
 \item{train_predictions}{Vector of posterior mean predictions on the
 training data.}
@@ -136,6 +162,7 @@ probabilities (only for \code{outcome_type = "binary"} and if
 Fits a Bayesian Shrinkage Tree model with flexible global-local priors on the
 step heights. This function generalizes \code{\link{HorseTrees}} by allowing
 different global-local shrinkage priors on the step heights.
+Supports continuous, binary, right-censored, and interval-censored outcomes.
 }
 \details{
 This function is a flexible generalization of \code{HorseTrees}.
@@ -153,13 +180,6 @@ separately for each tree, allowing adaptive regularization per tree.
 The \code{horseshoe_fw} prior (forest-wide horseshoe) is similar to
 \code{horseshoe}, except that the global shrinkage parameter is shared
 across all trees in the forest simultaneously.
-
-The \code{horseshoe_EB} prior is an empirical Bayes variant of the
-\code{horseshoe} prior. Here, the global shrinkage parameter (\eqn{\tau})
-is not assigned a prior distribution but instead must be specified directly
-using \code{global_hp}, while local shrinkage parameters still follow
-half-Cauchy priors. Note: \eqn{\tau} must be provided by the user; it is
-not estimated by the software.
 
 The \code{half-cauchy} prior considers only local shrinkage and does not
 include a global shrinkage component. It places a half-Cauchy prior on each
@@ -224,6 +244,26 @@ post_mean_halfcauchy <- rowMeans(fit_halfcauchy$train_predictions_sample)
 mean_pred_horseshoe <- mean(post_mean_horseshoe)
 mean_pred_halfcauchy <- mean(post_mean_halfcauchy)
 
+# Example: Interval-censored survival outcome
+n <- 50; p <- 3
+X_ic <- matrix(rnorm(n * p), ncol = p)
+true_t <- rexp(n, rate = exp(-X_ic[, 1]))
+left_t  <- true_t * runif(n, 0.5, 1)
+right_t <- true_t * runif(n, 1, 1.5)
+exact <- sample(n, 15)
+left_t[exact] <- true_t[exact]; right_t[exact] <- true_t[exact]
+rc <- sample(setdiff(seq_len(n), exact), 10); right_t[rc] <- Inf
+
+fit_ic <- ShrinkageTrees(left_time = left_t, right_time = right_t,
+                         X_train = X_ic,
+                         outcome_type = "interval-censored",
+                         prior_type = "horseshoe",
+                         local_hp = 0.1 / sqrt(5),
+                         global_hp = 0.1 / sqrt(5),
+                         number_of_trees = 5,
+                         N_post = 10, N_burn = 5,
+                         verbose = FALSE)
+
 }
 \references{
 Jacobs, T., van Wieringen, W. N., & van der Pas, S. L. (2025).
@@ -237,5 +277,14 @@ prediction and variable selection.} Journal of the American Statistical
 Association.
 }
 \seealso{
-\code{\link{HorseTrees}}, \code{\link{CausalHorseForest}}, \code{\link{CausalShrinkageForest}}
+Model family: \code{\link{HorseTrees}} (horseshoe prior),
+\code{\link{CausalHorseForest}} (causal inference),
+\code{\link{CausalShrinkageForest}} (causal, flexible prior).
+
+Survival wrappers: \code{\link{SurvivalBART}}, \code{\link{SurvivalDART}}.
+
+S3 methods: \code{\link{print.ShrinkageTrees}},
+\code{\link{summary.ShrinkageTrees}},
+\code{\link{predict.ShrinkageTrees}},
+\code{\link{plot.ShrinkageTrees}}.
 }
