@@ -39,17 +39,39 @@
 #' \code{"interval-censored"}.
 #' @param number_of_trees_control Number of trees in the control forest. Default is 200.
 #' @param number_of_trees_treat Number of trees in the treatment forest. Default is 200.
-#' @param prior_type_control Type of prior on control forest step heights. One of 
-#' \code{"horseshoe"}, \code{"horseshoe_fw"}, or \code{"half-cauchy"}.
+#' @param prior_type_control Type of prior on control forest step heights. One of
+#' \code{"horseshoe"} (global-local, global scale per tree),
+#' \code{"horseshoe_fw"} (global scale shared forest-wide),
+#' \code{"half-cauchy"} (local shrinkage only),
+#' \code{"standard"} (the classical BART normal prior),
+#' \code{"dirichlet"} (standard prior with a Dirichlet splitting rule),
+#' \code{"standard-halfcauchy"}, or \code{"dirichlet-halfcauchy"}.
 #' Default is \code{"horseshoe"}.
 #' @param prior_type_treat Type of prior on treatment forest step heights. Same options as 
 #' \code{prior_type_control}.
-#' @param local_hp_control Local hyperparameter controlling shrinkage on individual steps 
-#' (control forest). Required for all prior types.
-#' @param local_hp_treat Local hyperparameter for treatment forest.
-#' @param global_hp_control Global hyperparameter for control forest. Required for horseshoe-type
-#' priors; ignored for \code{"half-cauchy"}.
-#' @param global_hp_treat Global hyperparameter for treatment forest.
+#' @param local_hp_control Local hyperparameter controlling shrinkage on
+#' individual step heights (control forest).
+#'
+#' For \code{prior_type_control = "horseshoe"} this may be left \code{NULL}, in
+#' which case it defaults to \code{k / sqrt(number_of_trees_control)} with
+#' \code{k = 1.5}. Values between 1 and 2 worked well across a range of
+#' simulated settings: \code{k} near 1 shrinks more aggressively, \code{k}
+#' near 2 is more conservative. \code{k} is also a natural target for
+#' cross-validation; see the "Choosing k" section of the package vignette.
+#' @param local_hp_treat Local hyperparameter for the treatment forest. Same
+#' default, using \code{number_of_trees_treat}.
+#' @param global_hp_control Global hyperparameter for the control forest.
+#' Ignored for \code{"half-cauchy"}. Same default as
+#' \code{local_hp_control}; only their product identifies the prior, so
+#' setting the two equal loses nothing.
+#' @param global_hp_treat Global hyperparameter for the treatment forest. Same
+#' default as \code{local_hp_treat}.
+#'
+#' \strong{Changed in version 2.1.0.} These previously had to be supplied for
+#' horseshoe priors, and the value used throughout the documentation was
+#' \code{0.1 / sqrt(number_of_trees)}. That value was calibrated against a
+#' defect which made the global hyperparameters inert (see \code{NEWS.md});
+#' with the defect corrected it shrinks far too aggressively.
 #' @param a_dirichlet_control First shape parameter of the Beta prior used in the
 #' Dirichlet–Sparse splitting rule for the control forest. Together with 
 #' `b_dirichlet_control`, it controls the expected sparsity level.
@@ -136,7 +158,7 @@
 #' priors. It is particularly useful for estimating heterogeneous treatment 
 #' effects in high-dimensional settings. Further
 #' methodological details on the Horseshoe Forest framework can be found in 
-#' Jacobs, van Wieringen & van der Pas (2025).
+#' Jacobs, van Wieringen & van der Pas (2026).
 #'
 #' The \code{horseshoe} prior is the fully Bayesian global-local shrinkage
 #' prior, where both the global and local shrinkage parameters are assigned
@@ -159,9 +181,10 @@
 #' \code{rho_dirichlet}.
 #'
 #' @references
-#' Jacobs, T., van Wieringen, W. N., & van der Pas, S. L. (2025).  
-#' *Horseshoe Forests for High-Dimensional Causal Survival Analysis.*  
-#' arXiv:2507.22004. https://doi.org/10.48550/arXiv.2507.22004
+#' Jacobs, T., van Wieringen, W. N., & van der Pas, S. L. (2026).
+#' *Horseshoe Forests for High-Dimensional Causal Survival Analysis.*
+#' Bayesian Analysis, advance publication, 1-30.
+#' https://doi.org/10.1214/26-BA1603
 #' 
 #' Chipman, H. A., George, E. I., & McCulloch, R. E. (2010). 
 #' *BART: Bayesian additive regression trees.* Annals of Applied Statistics.
@@ -190,10 +213,10 @@
 #'                                        number_of_trees_control = 5,
 #'                                        prior_type_control = "horseshoe",
 #'                                        prior_type_treat = "horseshoe",
-#'                                        local_hp_control = 0.1/sqrt(5),
-#'                                        local_hp_treat = 0.1/sqrt(5),
-#'                                        global_hp_control = 0.1/sqrt(5),
-#'                                        global_hp_treat = 0.1/sqrt(5),
+#'                                        local_hp_control = 1.5/sqrt(5),
+#'                                        local_hp_treat = 1.5/sqrt(5),
+#'                                        global_hp_control = 1.5/sqrt(5),
+#'                                        global_hp_treat = 1.5/sqrt(5),
 #'                                        N_post = 10,
 #'                                        N_burn = 5,
 #'                                        store_posterior_sample = TRUE,
@@ -248,8 +271,8 @@
 #'   outcome_type = "interval-censored",
 #'   number_of_trees_control = 5, number_of_trees_treat = 5,
 #'   prior_type_control = "horseshoe", prior_type_treat = "horseshoe",
-#'   local_hp_control = 0.1/sqrt(5), local_hp_treat = 0.1/sqrt(5),
-#'   global_hp_control = 0.1/sqrt(5), global_hp_treat = 0.1/sqrt(5),
+#'   local_hp_control = 1.5/sqrt(5), local_hp_treat = 1.5/sqrt(5),
+#'   global_hp_control = 1.5/sqrt(5), global_hp_treat = 1.5/sqrt(5),
 #'   N_post = 10, N_burn = 5,
 #'   store_posterior_sample = TRUE, verbose = FALSE)
 #'
@@ -395,15 +418,31 @@ CausalShrinkageForest <- function(y = NULL,
   }
   
   # Prior-specific checks
-  if (prior_type_control %in% c("horseshoe", "horseshoe_fw")) {
+  #
+  # For the horseshoe, unsupplied scales fall back to the calibrated default
+  # k / sqrt(number_of_trees) with k = HORSESHOE_K_CAUSAL, applied per forest
+  # using that forest's own tree count. Any argument may still be given alone.
+  if (prior_type_control == "horseshoe") {
+    default_hp <- HORSESHOE_K_CAUSAL / sqrt(number_of_trees_control)
+    if (is.null(local_hp_control))  local_hp_control  <- default_hp
+    if (is.null(global_hp_control)) global_hp_control <- default_hp
+  }
+
+  if (prior_type_treat == "horseshoe") {
+    default_hp <- HORSESHOE_K_CAUSAL / sqrt(number_of_trees_treat)
+    if (is.null(local_hp_treat))  local_hp_treat  <- default_hp
+    if (is.null(global_hp_treat)) global_hp_treat <- default_hp
+  }
+
+  if (prior_type_control == "horseshoe_fw") {
     if (is.null(local_hp_control) || is.null(global_hp_control)) {
-      stop("For prior_type_control = 'horseshoe' or 'horseshoe_fw', you must provide both local_hp and global_hp.")
+      stop("For prior_type_control = 'horseshoe_fw', you must provide both local_hp_control and global_hp_control.")
     }
   }
-  
-  if (prior_type_treat %in% c("horseshoe", "horseshoe_fw")) {
+
+  if (prior_type_treat == "horseshoe_fw") {
     if (is.null(local_hp_treat) || is.null(global_hp_treat)) {
-      stop("For prior_type_treat = 'horseshoe' or 'horseshoe_fw', you must provide both local_hp and global_hp.")
+      stop("For prior_type_treat = 'horseshoe_fw', you must provide both local_hp_treat and global_hp_treat.")
     }
   }
 
@@ -854,9 +893,17 @@ CausalShrinkageForest <- function(y = NULL,
       right_time <- log(right_time)
     }
 
-    # Estimate mu and sd
+    # Estimate mu and sd. right_time was collapsed onto left_time above so the
+    # C++ layer gets a finite boundary, but Surv(type = "interval2") reads
+    # left == right as an EXACT event, which would score every right-censored
+    # subject as an event and pull the centring mean down. Reopen the bound for
+    # the estimation call: status == 0 & ic_indicator == 0 is exactly the set
+    # whose right_time was Inf.
+    right_open <- right_time
+    right_open[status == 0 & ic_indicator == 0] <- Inf
+
     cens_inf <- censored_info(y, status, left_time = left_time,
-                              right_time = right_time, ic_indicator = ic_indicator)
+                              right_time = right_open, ic_indicator = ic_indicator)
 
     y_mean <- cens_inf$mu
     y <- y - y_mean
@@ -1142,8 +1189,6 @@ CausalShrinkageForest <- function(y = NULL,
 
   prior_type_control_cpp <- prior_type_control
   prior_type_treat_cpp <- prior_type_treat
-  dirichlet_bool_control <- FALSE
-  dirichlet_bool_treat <- FALSE
 
   obj <- NewCausalShrinkageForest(
     fit = fit,

@@ -2,8 +2,8 @@ Package: ShrinkageTrees
 Type: Package
 Title: Bayesian Tree Ensembles for Survival Analysis and Causal
         Inference
-Version: 2.0.2
-Date: 2026-04-20
+Version: 2.1.0
+Date: 2026-09-02
 Authors@R: 
     c(person("Tijn", "Jacobs",
              role = c("aut", "cre"),
@@ -21,10 +21,10 @@ URL: https://github.com/tijn-jacobs/ShrinkageTrees
 BugReports: https://github.com/tijn-jacobs/ShrinkageTrees/issues
 License: MIT + file LICENSE
 Depends: R (>= 4.1.0)
-Imports: parallel, Rcpp
+Imports: parallel, Rcpp, splines, stats, utils
 LinkingTo: Rcpp (>= 1.0.11)
-Suggests: coda, ggplot2, knitr, rmarkdown, survival, testthat (>=
-        3.0.0)
+Suggests: coda, ggplot2, glmnet, knitr, rmarkdown, rpart, survival,
+        testthat (>= 3.0.0)
 VignetteBuilder: knitr
 RoxygenNote: 7.3.3
 Encoding: UTF-8
@@ -32,7 +32,7 @@ LazyData: true
 LazyDataCompression: xz
 Config/testthat/edition: 3
 NeedsCompilation: yes
-Packaged: 2026-04-21 19:25:57 UTC; tijnjacobs
+Packaged: 2026-09-02 13:17:37 UTC; tijnjacobs
 Author: Tijn Jacobs [aut, cre] (ORCID: <https://orcid.org/0009-0003-6188-9296>)
 Repository: CRAN
-Date/Publication: 2026-04-21 19:53:08 UTC
+Date/Publication: 2026-09-02 14:00:02 UTC

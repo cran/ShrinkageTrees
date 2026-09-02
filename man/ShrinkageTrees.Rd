@@ -78,12 +78,26 @@ internally) or \code{"log"} (already log-transformed). Used when
 \code{"standard"} and \code{"dirichlet"}.}
 
 \item{local_hp}{Local hyperparameter controlling shrinkage on individual
-step heights. Should typically be set smaller than 1 / sqrt(number_of_trees).
-Required for \code{prior_type = "standard"}.}
+step heights. Required for \code{prior_type = "standard"}.
+
+For \code{prior_type = "horseshoe"} this may be left \code{NULL}, in which case it
+defaults to \code{k / sqrt(number_of_trees)} with \code{k = 1.0}. Values of \code{k}
+between roughly 0.5 and 1.5 worked well across a wide range of
+simulation settings; \code{k} is also a natural target for cross-validation.
+See the "Choosing k" section of the package vignette.}
 
 \item{global_hp}{Global hyperparameter controlling overall shrinkage.
-Must be specified for Horseshoe-type priors; ignored for
-\code{prior_type = "half-cauchy"} or \code{"standard"}.}
+Ignored for \code{prior_type = "half-cauchy"} or \code{"standard"}.
+
+For \code{prior_type = "horseshoe"} this may be left \code{NULL}, in which case it
+takes the same default as \code{local_hp}. Only their product identifies the
+prior, so setting the two equal loses nothing.
+
+\strong{Changed in version 2.1.0.} Both arguments previously had to be
+supplied for horseshoe priors, and the value used throughout the
+documentation was \code{0.1 / sqrt(number_of_trees)}. That value was calibrated
+against a defect which made \code{global_hp} inert (see \code{NEWS.md}); with the
+defect corrected it shrinks far too aggressively.}
 
 \item{a_dirichlet}{First shape parameter of the Beta prior used in the
 Dirichlet-Sparse splitting rule. Together with \code{b_dirichlet}, it
@@ -169,7 +183,7 @@ This function is a flexible generalization of \code{HorseTrees}.
 Instead of using a single Horseshoe prior, it allows specifying different
 global–local shrinkage configurations for the tree step heights. Further
 methodological details on the Horseshoe Forest framework can be found in
-Jacobs, van Wieringen & van der Pas (2025).
+Jacobs, van Wieringen & van der Pas (2026).
 
 The \code{horseshoe} prior is the fully Bayesian global-local shrinkage
 prior, where both the global and local shrinkage parameters are assigned
@@ -212,8 +226,8 @@ fit_horseshoe <- ShrinkageTrees(y = y,
                                 outcome_type = "continuous",
                                 number_of_trees = 5,
                                 prior_type = "horseshoe",
-                                local_hp = 0.1 / sqrt(5),
-                                global_hp = 0.1 / sqrt(5),
+                                local_hp = 1.0 / sqrt(5),
+                                global_hp = 1.0 / sqrt(5),
                                 N_post = 10,
                                 N_burn = 5,
                                 store_posterior_sample = TRUE,
@@ -258,17 +272,19 @@ fit_ic <- ShrinkageTrees(left_time = left_t, right_time = right_t,
                          X_train = X_ic,
                          outcome_type = "interval-censored",
                          prior_type = "horseshoe",
-                         local_hp = 0.1 / sqrt(5),
-                         global_hp = 0.1 / sqrt(5),
+                         local_hp = 1.0 / sqrt(5),
+                         global_hp = 1.0 / sqrt(5),
                          number_of_trees = 5,
                          N_post = 10, N_burn = 5,
                          verbose = FALSE)
 
 }
 \references{
-Jacobs, T., van Wieringen, W. N., & van der Pas, S. L. (2025).
+Jacobs, T., van Wieringen, W. N., & van der Pas, S. L. (2026).
 \emph{Horseshoe Forests for High-Dimensional Causal Survival Analysis.}
-arXiv:2507.22004. https://doi.org/10.48550/arXiv.2507.22004
+Bayesian Analysis, advance publication, 1-30.
+https://doi.org/10.1214/26-BA1603
+
 Chipman, H. A., George, E. I., & McCulloch, R. E. (2010).
 \emph{BART: Bayesian additive regression trees.} Annals of Applied Statistics.
 

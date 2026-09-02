@@ -11,6 +11,28 @@ knitr::opts_chunk$set(
 library(ShrinkageTrees)
 set.seed(42)
 
+## ----cv-k, eval = FALSE-------------------------------------------------------
+# library(survival)
+# 
+# k_grid <- c(0.5, 0.75, 1.0, 1.25, 1.5)
+# folds  <- sample(rep(1:5, length.out = length(y)))
+# 
+# cv_score <- function(k) {
+#   scores <- vapply(1:5, function(f) {
+#     te <- which(folds == f); tr <- setdiff(seq_along(y), te)
+#     fit <- HorseTrees(
+#       y = y[tr], status = status[tr], X_train = X[tr, ], X_test = X[te, ],
+#       outcome_type = "right-censored", timescale = "log",
+#       k = k, N_post = 1000, N_burn = 1000, verbose = FALSE
+#     )
+#     concordance(Surv(exp(y[te]), status[te]) ~ exp(fit$test_predictions))$concordance
+#   }, numeric(1))
+#   mean(scores)
+# }
+# 
+# scores <- vapply(k_grid, cv_score, numeric(1))
+# k_best <- k_grid[which.max(scores)]
+
 ## ----tc-data------------------------------------------------------------------
 set.seed(50)
 n_tc <- 60;  p_tc <- 5
@@ -85,7 +107,7 @@ data("pdac")
 # Dimensions and column overview
 cat("Patients:", nrow(pdac), "\n")
 cat("Columns :", ncol(pdac), "\n")
-cat("Clinical columns:", paste(names(pdac)[1:13], collapse = ", "), "\n")
+cat("Clinical columns:", paste(names(pdac)[1:14], collapse = ", "), "\n")
 cat("Survival: time (months), censoring rate =",
     round(1 - mean(pdac$status), 2), "\n")
 cat("Treatment: radiation =", sum(pdac$treatment),
@@ -102,7 +124,7 @@ X         <- as.matrix(pdac[, !(names(pdac) %in% c("time", "status", "treatment"
 #   y            = treatment,
 #   X_train      = X,
 #   outcome_type = "binary",
-#   k            = 0.1,
+#   k            = 1.0,
 #   N_post       = 5000,
 #   N_burn       = 5000,
 #   verbose      = FALSE
@@ -220,8 +242,8 @@ fit_hs <- ShrinkageTrees(
   X_train         = X_syn,
   outcome_type    = "continuous",
   prior_type      = "horseshoe",
-  local_hp        = 0.1 / sqrt(5),
-  global_hp       = 0.1 / sqrt(5),
+  local_hp        = 1.0 / sqrt(5),
+  global_hp       = 1.0 / sqrt(5),
   number_of_trees = 5,
   N_post          = 50,
   N_burn          = 25,
@@ -234,8 +256,8 @@ fit_fw <- ShrinkageTrees(
   X_train         = X_syn,
   outcome_type    = "continuous",
   prior_type      = "horseshoe_fw",
-  local_hp        = 0.1 / sqrt(5),
-  global_hp       = 0.1 / sqrt(5),
+  local_hp        = 1.0 / sqrt(5),
+  global_hp       = 1.0 / sqrt(5),
   number_of_trees = 5,
   N_post          = 50,
   N_burn          = 25,
@@ -300,8 +322,8 @@ fit_hd_hs <- ShrinkageTrees(
   X_train         = X_hd,
   outcome_type    = "right-censored",
   prior_type      = "horseshoe",
-  local_hp        = 0.1 / sqrt(10),
-  global_hp       = 0.1 / sqrt(10),
+  local_hp        = 1.0 / sqrt(10),
+  global_hp       = 1.0 / sqrt(10),
   number_of_trees = 10,
   N_post          = 50,
   N_burn          = 25,
@@ -437,7 +459,7 @@ cat("Test CATE (first 5):",
 
 ## ----causal-shrinkage---------------------------------------------------------
 set.seed(10)
-lh <- 0.1 / sqrt(5)
+lh <- 1.5 / sqrt(5)
 
 fit_csf <- CausalShrinkageForest(
   y                         = y_causal,
@@ -488,6 +510,74 @@ fit_fw2 <- CausalShrinkageForest(
 
 cat("Forest-wide shrinkage (control, first 5 draws):\n")
 print(round(fit_fw2$forestwide_shrinkage_control[1:5], 4))
+
+## ----pp-fit-------------------------------------------------------------------
+set.seed(30)
+fit_pp <- HorseTrees(
+  y               = y_hd,
+  status          = d_hd,
+  X_train         = X_hd,
+  outcome_type    = "right-censored",
+  timescale       = "time",
+  number_of_trees = 5,
+  N_post          = 50,
+  N_burn          = 25,
+  store_posterior_sample = TRUE,
+  verbose         = FALSE
+)
+
+## ----pp-linear----------------------------------------------------------------
+pp_lin <- posterior_projection(fit_pp, family = "linear",
+                               covariates = 1:5)
+pp_lin
+
+## ----pp-linear-plots, eval=requireNamespace("ggplot2", quietly=TRUE)----------
+plot(pp_lin, type = "coefficients")
+plot(pp_lin, type = "rho2")
+
+## ----pp-linear-draws----------------------------------------------------------
+quantile(pp_lin$coefficients[, 2], c(0.025, 0.5, 0.975))
+
+## ----pp-linear-err, error=TRUE------------------------------------------------
+try({
+posterior_projection(fit_pp, family = "linear")
+})
+
+## ----pp-lasso, eval=requireNamespace("glmnet", quietly=TRUE)------------------
+pp_las <- posterior_projection(fit_pp, family = "linear",
+                               penalty = "lasso")
+pp_las
+
+# One set of coefficients, most of them exactly zero:
+sum(pp_las$coefficients[1, -1] != 0)
+
+## ----pp-lasso-path, eval=requireNamespace("glmnet", quietly=TRUE) && requireNamespace("ggplot2", quietly=TRUE)----
+plot(pp_las, type = "path")
+
+## ----pp-additive--------------------------------------------------------------
+pp_add <- posterior_projection(fit_pp, family = "additive",
+                               covariates = 1:3, df_spline = 3)
+pp_add
+
+## ----pp-effects, eval=requireNamespace("ggplot2", quietly=TRUE)---------------
+plot(pp_add, type = "effects")
+
+## ----pp-tree, eval=requireNamespace("rpart", quietly=TRUE)--------------------
+pp_tree <- posterior_projection(fit_pp, family = "tree", max_leaves = 4)
+pp_tree
+
+## ----pp-tree-plot, eval=requireNamespace("rpart", quietly=TRUE) && requireNamespace("ggplot2", quietly=TRUE)----
+plot(pp_tree, type = "tree")
+
+## ----pp-causal----------------------------------------------------------------
+pp_tau <- posterior_projection(fit_chf, target = "treatment",
+                               family = "linear", covariates = 1:5)
+pp_tau
+
+## ----pp-causal-tree, eval=requireNamespace("rpart", quietly=TRUE)-------------
+# Subgroups of treatment effect, with posterior intervals per leaf
+posterior_projection(fit_chf, target = "treatment",
+                     family = "tree", max_leaves = 4)
 
 ## ----print--------------------------------------------------------------------
 print(fit_chf)
@@ -569,7 +659,7 @@ fit_dart <- ShrinkageTrees(
   X_train         = X_syn,
   outcome_type    = "continuous",
   prior_type      = "dirichlet",
-  local_hp        = 0.1 / sqrt(5),
+  local_hp        = 1.0 / sqrt(5),
   number_of_trees = 5,
   N_post          = 50,
   N_burn          = 25,
@@ -616,8 +706,8 @@ fit_2chain <- ShrinkageTrees(
   X_train         = X_syn,
   outcome_type    = "continuous",
   prior_type      = "horseshoe",
-  local_hp        = 0.1 / sqrt(5),
-  global_hp       = 0.1 / sqrt(5),
+  local_hp        = 1.0 / sqrt(5),
+  global_hp       = 1.0 / sqrt(5),
   number_of_trees = 5,
   N_post          = 50,
   N_burn          = 25,
@@ -693,7 +783,7 @@ coda::geweke.diag(mcmc_obj[[1]])
 #   y            = treatment,
 #   X_train      = X,
 #   outcome_type = "binary",
-#   k            = 0.1,
+#   k            = 1.0,
 #   N_post       = 5000,
 #   N_burn       = 5000,
 #   verbose      = FALSE

@@ -1,3 +1,129 @@
+# ShrinkageTrees 2.1.0
+
+## Two corrections to the horseshoe global update (breaking)
+
+Two independent defects in `Horseshoe::GlobalUpdate()` have been fixed. Both
+affected every fit using `prior_type = "horseshoe"` (including `HorseTrees()`
+and `CausalHorseForest()`). Results from earlier versions will not reproduce
+under this release.
+
+1. **`global_hp` had no effect.** The scale entered the auxiliary draw as
+   `1.0 / alpha_global * alpha_global`, which by operator precedence is the
+   constant `1.0`. The user's `global_hp` was silently discarded, so every fit
+   behaved as though `global_hp = 1` regardless of what was supplied. This was
+   reported by a referee of the accompanying manuscript.
+
+2. **The error scale and the forest scale were swapped.** `EtaPrior::GlobalUpdate()`
+   declares `(..., sigma, omega, ...)` but was being called with `(omega, sigma)`.
+   Both are `const double&`, so the swap compiled silently. The `tau` draw
+   therefore divided by `sigma` where it should have divided by `omega`. The
+   effect is small where `omega = 1` (`HorseTrees()`, `ShrinkageTrees()`) and
+   substantial where `omega = 1/2` (the causal forests), where it grew with the
+   number of covariates.
+
+## Recalibrated default shrinkage (breaking)
+
+The old default of `k = 0.1` was chosen while defect (1) was present, so it was
+tuned for a model in which the global scale was pinned at 1. With the defect
+corrected, that value shrinks far too aggressively: in our simulations it drove
+pointwise coverage of the conditional treatment effect from roughly 0.95 down to
+about 0.4. Re-running existing scripts against this release *without* updating
+`k` is therefore worse than not upgrading at all.
+
+The defaults are now calibrated for the corrected sampler:
+
+| function | old | new |
+|---|---|---|
+| `HorseTrees()` | `k = 0.1` | `k = 1.0` |
+| `CausalHorseForest()` | `k = 0.1` | `k = 1.5` |
+| `ShrinkageTrees()` | `local_hp`, `global_hp` required | default to `1.0 / sqrt(number_of_trees)` |
+| `CausalShrinkageForest()` | four scales required | default to `1.5 / sqrt(number_of_trees_*)` |
+
+Values of `k` between roughly 0.5 and 1.5 (single-forest models) or 1 and 2
+(causal models) worked well across a range of simulated settings, with smaller
+values shrinking more aggressively and larger values being more conservative.
+The defaults sit in the middle of each range. The
+causal range is higher because the treatment forest enters as `b * tau(x)` with
+`b = +/- 1/2`, halving its contribution to the response; measured on the scale
+of that contribution the two recommendations nearly coincide. `k` remains
+exposed on all four functions and is a natural target for cross-validation.
+
+The `local_hp` / `global_hp` arguments are also no longer mandatory for
+`prior_type = "horseshoe"`; either may be supplied alone, with the other taking
+its default. Only their product identifies the prior, so setting them equal
+loses nothing. `prior_type = "horseshoe_fw"` is unchanged and still requires
+both to be given explicitly.
+
+## `ovarian` rebuilt, `ovarian_truth` added (breaking)
+
+- Removed the outcome-derived `left_time` and `right_time` columns and a
+  duplicated `year_of_diagnosis.1`; the frame is now 357 x 1004. Old fits leaked
+  the outcome, and positional column selection now picks different covariates.
+- New `ovarian_truth`: the prognostic surface, treatment effect, propensity
+  score and uncensored event time behind the semi-synthetic cohort. Its times
+  are in months; `ovarian$OS_time` is in days.
+- `year_of_diagnosis` was documented as an instrumental variable; it is a
+  confounder. Wording only.
+
+## `predict()` passed the training design in the wrong memory order
+
+`predict()` on a `ShrinkageTrees` object handed the stored training design
+matrix straight to the C++ sampler. The C++ layer reads designs as a flat
+**row-major** buffer, but R coerces a matrix to a vector **column-major**, so
+the training data was transposed inside the sampler on every call whenever
+`n != p`. The test design on the same call was flattened correctly, so the two
+disagreed. It ran and returned plausible numbers.
+
+`predict()` on a `CausalShrinkageForest` object was unaffected: it already
+flattened both designs correctly.
+
+## New: `posterior_projection()`
+
+Lower-dimensional posterior summarisation following Woody, Carvalho and Murray
+(2021). Every posterior draw of the fitted function, or of the treatment-effect
+and prognostic surfaces for causal fits, is projected onto a simpler summary
+model: a linear model (unpenalised, ridge, lasso, or elastic net), a
+spline-additive model, or a shallow CART tree. Returns a posterior over
+summaries with credible intervals, plus the posterior of the summary R-squared.
+
+The penalised linear families are the exception: they project the posterior
+mean of the surface once and report point estimates, with no intervals. The
+spread of a penalised solution across draws has no coverage guarantee for the
+projection of the true surface, and the implied inclusion frequencies read as
+selection probabilities while being driven by the penalty.
+
+`glmnet` and `rpart` are new suggested packages.
+
+## Bug fixes
+
+- Right-censored subjects were scored as exact events when centring an
+  interval-censored outcome. The fitting functions collapse an infinite
+  `right_time` onto `left_time` because the C++ layer needs a finite boundary,
+  but that collapse happened *before* the mean and scale were estimated. Those
+  come from `survival::Surv(left_time, right_time, type = "interval2")`, under
+  which `left == right` denotes an exact event, so every right-censored subject
+  was treated as observed. The centring mean and the sigma prior were biased
+  downward, by more the heavier the censoring. All four interval-censored paths
+  were affected: `HorseTrees()`, `ShrinkageTrees()`, `CausalHorseForest()` and
+  `CausalShrinkageForest()`. `SurvivalBCF()` and `SurvivalShrinkageBCF()` were
+  not. Interval-censored fits containing right-censored observations will
+  change.
+- `predict()` silently dropped the Dirichlet splitting rule and re-ran under the
+  standard prior, affecting every `SurvivalDART()` and `SurvivalShrinkageBCF()`
+  fit. Predictions from those models will change.
+- Corrected documented defaults: `HorseTrees()` `base` (0.95, not 1.05) and `q`
+  (0.90, not 1.00); `CausalShrinkageForest()` listed three of seven
+  `prior_type` values; `plot(type = "path")` shows the cross-validation curve,
+  not the summary R-squared.
+- Declared `stats`, `utils` and `splines` in `Imports`.
+
+## Reproducing earlier output
+
+There is no setting that reproduces pre-2.1.0 results exactly, because the
+sampler itself has changed. The closest correspondence is that the old code was
+equivalent to the corrected code with `global_hp = 1`, since the global scale
+was inert.
+
 # ShrinkageTrees 2.0.2
 
 ## Bayesian bootstrap for the average treatment effect

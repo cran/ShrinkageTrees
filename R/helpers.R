@@ -48,6 +48,13 @@ censored_info <- function(y, status, left_time = NULL, right_time = NULL,
 
     if (!is.null(left_time) && !is.null(right_time)) {
       # Interval-censored path: use Surv(time, time2, type = "interval2")
+      #
+      # Under interval2 semantics an open right end must be NA (or Inf); a
+      # finite right_time equal to left_time means an EXACT event. Callers must
+      # therefore pass the true bounds here, before any collapse of Inf onto
+      # left_time for the C++ layer. Normalising non-finite bounds to NA makes
+      # that explicit and is what survreg() expects.
+      right_time[!is.finite(right_time)] <- NA_real_
       surv_obj <- survival::Surv(left_time, right_time, type = "interval2")
       fit <- survival::survreg(surv_obj ~ 1, dist = "gaussian")
 
@@ -259,3 +266,30 @@ censored_info <- function(y, status, left_time = NULL, right_time = NULL,
   rowSums(W * tau_samples)
 }
 
+
+# Calibrated default horseshoe scale, single-forest models -------------------
+#
+# Used by HorseTrees() and ShrinkageTrees(). The local and global scales are
+# both set to k / sqrt(number_of_trees).
+#
+# The leaf standard deviation is sqrt(omega) * local_hp * global_hp, and a sum
+# of m heavy-tailed leaves grows like m, so the implied prior scale of the
+# whole ensemble is sqrt(omega) * k^2 -- free of number_of_trees. The value
+# below puts that quantity near 1 on a standardized response, which gave
+# near-nominal pointwise coverage for p between 50 and 5000.
+#
+# Keep in sync with the `k` default in the HorseTrees() signature; the
+# regression test in tests/testthat/test-horseshoe-defaults.R asserts this.
+HORSESHOE_K_SINGLE <- 1.0
+
+# Calibrated default horseshoe scale, causal (tau-learner) models ------------
+#
+# Used by CausalHorseForest() and CausalShrinkageForest(), applied to both
+# forests using each forest's own tree count.
+#
+# Larger than HORSESHOE_K_SINGLE because the treatment forest enters as
+# b * tau(x) with b = +/- 1/2, so its contribution to the response is halved.
+# Measured in terms of the contribution scale the two defaults agree closely.
+#
+# Keep in sync with the `k` default in the CausalHorseForest() signature.
+HORSESHOE_K_CAUSAL <- 1.5

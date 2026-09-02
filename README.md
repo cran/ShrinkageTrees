@@ -30,7 +30,7 @@ Supported outcome types:
 
 All models are implemented with an efficient C++ backend via Rcpp, allowing scalable MCMC sampling in high-dimensional settings.
 
-## ⭐ Core Contribution: Horseshoe Forests
+## ⭐ Core contribution: Horseshoe Forests
 
 Traditional BART and DART primarily regularise model complexity through the **tree structure** (e.g., depth constraints or splitting probabilities).
 
@@ -44,19 +44,20 @@ This methodology is introduced in:
 
 > _Horseshoe Forests for High-Dimensional Causal Survival Analysis_  
 > T. Jacobs, W.N. van Wieringen, S.L. van der Pas  
-> https://arxiv.org/abs/2507.22004
+> _Bayesian Analysis_, Advance Publication, 1–30 (2026). Open access.  
+> https://doi.org/10.1214/26-BA1603
 
-## 🧠 Implemented Models
+## 🧠 Implemented models
 
 ShrinkageTrees implements a modular family of Bayesian tree models:
 
-### Single-Forest Models
+### Single-forest models
 
 - **HorseTrees** — BART with Horseshoe shrinkage on leaf parameters
 - **DART** — Dirichlet prior on splitting probabilities
 - **Standard BART** — Classical Gaussian leaf prior
 
-### Causal Models (BCF-style decomposition)
+### Causal models (BCF-style decomposition)
 
 - **CausalHorseForest** — Prognostic + treatment forests with Horseshoe shrinkage
 - **CausalShrinkageForest** — General shrinkage framework
@@ -65,7 +66,7 @@ ShrinkageTrees implements a modular family of Bayesian tree models:
 
 All causal models support right-censored and interval-censored survival data and heterogeneous treatment effect (CATE) estimation.
 
-## 🌲 Tree Regularisation Strategies
+## 🌲 Tree regularisation strategies
 
 ShrinkageTrees supports multiple regularisation mechanisms:
 
@@ -128,7 +129,7 @@ fit_horseshoe <- CausalHorseForest(
   outcome_type = "right-censored",
   timescale = "log",
   number_of_trees = 200,
-  k = 0.1,
+  k = 1.5,
   N_post = 5000,
   N_burn = 5000,
   store_posterior_sample = TRUE
@@ -148,23 +149,29 @@ ATE_horseshoe <- mean(post_ATE_horseshoe)
 
 ![Posterior ATE plot](man/figures/posterior_ate_plot.png)
 
-## 📊 Included Datasets
+## 📊 Included datasets
 
 The package ships with two TCGA datasets for high-dimensional survival analysis and causal inference:
 
 | Dataset   | Cancer            | n   | Covariates              | Treatment                |
 | --------- | ----------------- | --- | ----------------------- | ------------------------ |
 | `pdac`    | Pancreatic (PAAD) | 178 | ~3,000 genes + clinical | Radiation vs control     |
-| `ovarian` | Ovarian (OV)      | 357 | 2,000 genes + clinical  | Carboplatin vs cisplatin |
+| `ovarian` | Ovarian (OV)      | 357 | 997 genes + clinical    | Carboplatin vs cisplatin |
 
 ```r
 data("pdac")     # data frame with time, status, treatment, gene expression, ...
 data("ovarian")  # data frame with OS_time, OS_event, treatment, clinical vars, and gene expression columns
 ```
 
-## 🩺 Pancreatic Cancer Analysis Demo
+`ovarian` is semi-synthetic: the covariates are real TCGA-OV measurements, while treatment and survival times are simulated from a known data-generating process. The companion table `ovarian_truth` holds the quantities that generated it, so estimates can be scored against the truth:
 
-The package includes a **demo analysis** based on the TCGA PAAD (pancreatic cancer) dataset to showcase how ShrinkageTrees can be used in practice. This demo replicates the main case study from the preprint _"Horseshoe Forests for High-Dimensional Causal Survival Analysis"_ ([arXiv:2507.22004](https://arxiv.org/abs/2507.22004)).
+```r
+data("ovarian_truth")  # mu, tau, f, propensity, log_time, time, censoring_time
+```
+
+## 🩺 Pancreatic cancer analysis demo
+
+The package includes a **demo analysis** based on the TCGA PAAD (pancreatic cancer) dataset to showcase how ShrinkageTrees can be used in practice. This demo replicates the main case study from _"Horseshoe Forests for High-Dimensional Causal Survival Analysis"_ (_Bayesian Analysis_, [doi:10.1214/26-BA1603](https://doi.org/10.1214/26-BA1603)).
 
 The demo:
 
@@ -179,7 +186,7 @@ You can run it directly from R after installing the package:
 demo("pdac_analysis", package = "ShrinkageTrees")
 ```
 
-## 🔬 Why ShrinkageTrees Is Unique
+## 🔬 Why ShrinkageTrees is unique
 
 ShrinkageTrees provides:
 
@@ -203,6 +210,16 @@ within a single coherent Bayesian tree framework.
 - For survival-specific Bayesian tree functions, see: `?SurvivalBART`, `?SurvivalDART`, `?SurvivalBCF`, and `?SurvivalShrinkageBCF`.
 - Examples and parameter descriptions can be found in each function’s documentation.
 
+## 🔧 Version 2.1.0: corrected sampler and recalibrated shrinkage
+
+Version 2.1.0 fixes two defects in the horseshoe global update, one of which
+made `global_hp` inert. The previous default `k = 0.1` had been calibrated while
+that defect was present, so it is recalibrated to `k = 1` for the single-forest
+models and `k = 1.5` for the causal models — results from earlier versions will
+not reproduce, and re-running old scripts without updating `k` is worse than not
+upgrading. Useful ranges are roughly 0.5–1.5 and 1–2 respectively, with smaller
+values shrinking more aggressively; see [NEWS.md](NEWS.md) for the full account.
+
 ## 🤝 Contributing
 
 Contributions are welcome! Feel free to open an [issue](https://github.com/tijn-jacobs/ShrinkageTrees/issues) or submit a pull request.
@@ -214,5 +231,5 @@ This package is licensed under the [MIT License](https://cran.r-project.org/web/
 
 ## 🇪🇺 Acknowledgments
 
-This project has received funding from the European Research Council (ERC) under the European Union’s Horizon Europe program under Grant agreement No. 101074082. Views and opinions expressed are however those of the author(s) only and do not necessarily reflect those of the European Union or the European Research Council Executive Agency. Neither the European Union nor the granting authority can be held responsible for them
+This project has received funding from the European Research Council (ERC) under the European Union’s Horizon Europe program under Grant agreement No. 101074802. Views and opinions expressed are however those of the author(s) only and do not necessarily reflect those of the European Union or the European Research Council Executive Agency. Neither the European Union nor the granting authority can be held responsible for them
 

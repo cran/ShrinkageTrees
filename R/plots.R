@@ -591,8 +591,7 @@ plot.CausalShrinkageForest <- function(x,
         ggplot2::geom_point(size = 0.8, alpha = 0.6) +
         ggplot2::labs(
           x     = "CATE",
-          y     = "Observation (sorted by posterior mean CATE)",
-          title = "Conditional Average Treatment Effects"
+          y     = "Observations (sorted)"
         ) +
         ggplot2::theme_bw()
     )
