@@ -2,8 +2,6 @@
 
  <img src="sticker/ShrinkageTrees_hex.png" align="right" width="150"/>
 
-## Overview
-
 **ShrinkageTrees** provides a unified framework for survival analysis using Bayesian regression tree ensembles, with a particular focus on **causal inference and high-dimensional data**.
 
 The package implements Horseshoe Trees, Causal Horseshoe Forests, and their more general counterparts — Shrinkage Trees and Causal Shrinkage Forests — alongside well-known Bayesian tree models such as BART, DART, and BCF. All models are adapted to right-censored and interval-censored data via accelerated failure time (AFT) formulations.
@@ -11,8 +9,6 @@ The package implements Horseshoe Trees, Causal Horseshoe Forests, and their more
 Its central methodological innovation is the **Horseshoe regularisation mechanism applied directly to tree step heights**, enabling adaptive global–local shrinkage in high-dimensional settings. In addition to classical BART priors, the package supports:
 
 - Horseshoe priors
-- Forest-wide Horseshoe shrinkage
-- Empirical Bayes Horseshoe calibration
 - Half-Cauchy priors
 - Dirichlet splitting priors (DART)
 
@@ -44,7 +40,7 @@ This methodology is introduced in:
 
 > _Horseshoe Forests for High-Dimensional Causal Survival Analysis_  
 > T. Jacobs, W.N. van Wieringen, S.L. van der Pas  
-> _Bayesian Analysis_, Advance Publication, 1–30 (2026). Open access.  
+> _Bayesian Analysis_, Advance Publication, 1–30 (2026).
 > https://doi.org/10.1214/26-BA1603
 
 ## 🧠 Implemented models
@@ -80,7 +76,7 @@ ShrinkageTrees supports multiple regularisation mechanisms:
   Global–local shrinkage applied directly to leaf parameters.
 
 - **Alternative shrinkage priors on step heights**  
-  Including global Cauchy and forest-wide shrinkage formulations for flexible control of overall regularisation strength.
+  Including half-Cauchy formulations for flexible control of overall regularisation strength.
 
 ## 📦 Installation
 
@@ -232,4 +228,3 @@ This package is licensed under the [MIT License](https://cran.r-project.org/web/
 ## 🇪🇺 Acknowledgments
 
 This project has received funding from the European Research Council (ERC) under the European Union’s Horizon Europe program under Grant agreement No. 101074802. Views and opinions expressed are however those of the author(s) only and do not necessarily reflect those of the European Union or the European Research Council Executive Agency. Neither the European Union nor the granting authority can be held responsible for them
-

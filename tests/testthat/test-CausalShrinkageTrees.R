@@ -34,7 +34,7 @@ test_that("CausalShrinkageForest works for continuous outcome", {
   expect_type(fit, "list")
   expect_true("train_predictions" %in% names(fit))
   expect_length(fit$train_predictions, n)
-  expect_length(fit$sigma, 10)  # N_post + N_burn = 10 + 5
+  expect_length(fit$sigma, 10)  # N_post draws; burn-in is dropped
   
   # Numerical checks
   fit_numeric <- unlist(fit[vapply(fit, is.numeric, logical(1))])
@@ -217,69 +217,6 @@ test_that("CausalShrinkageForest works for continuous outcome with half-cauchy p
   expect_equal(dim(fit$train_predictions_sample_control), c(10, n))
   expect_equal(dim(fit$train_predictions_sample_treat), c(10, n))
 })
-
-test_that("CausalShrinkageForest works for continuous outcome with horseshoe_fw prior", {
-  
-  n <- 50
-  p <- 3
-  X <- matrix(runif(n * p), ncol = p)
-  X_treat <- X_control <- X
-  treatment <- rbinom(n, 1, X[, 1])
-  tau <- 2
-  y <- X[, 1] + (0.5 - treatment) * tau + rnorm(n)
-  
-  set.seed(1)
-  fit <- CausalShrinkageForest(
-    y = y,
-    X_train_control = X_control,
-    X_train_treat = X_treat,
-    treatment_indicator_train = treatment,
-    outcome_type = "continuous",
-    number_of_trees_treat = 5,
-    number_of_trees_control = 5,
-    prior_type_control = "horseshoe_fw",
-    prior_type_treat = "horseshoe_fw",
-    local_hp_control = 0.1 / sqrt(5),
-    local_hp_treat = 0.1 / sqrt(5),
-    global_hp_control = 0.1 / sqrt(5),
-    global_hp_treat = 0.1 / sqrt(5),
-    N_post = 10,
-    N_burn = 5,
-    store_posterior_sample = TRUE,
-    verbose = FALSE
-  )
-  
-  expect_type(fit, "list")
-  expect_true("train_predictions" %in% names(fit))
-  expect_true("forestwide_shrinkage_control" %in% names(fit))
-  expect_true("forestwide_shrinkage_treat" %in% names(fit))
-  
-  expect_length(fit$train_predictions, n)
-  expect_length(fit$sigma, 10)
-  
-  # Check forestwide shrinkage vectors
-  expect_true(is.numeric(fit$forestwide_shrinkage_control))
-  expect_true(is.numeric(fit$forestwide_shrinkage_treat))
-  expect_length(fit$forestwide_shrinkage_control, 10)
-  expect_length(fit$forestwide_shrinkage_treat, 10)
-  
-  # Sanity checks on numerical values
-  fit_numeric <- unlist(fit[vapply(fit, is.numeric, logical(1))])
-  expect_false(any(is.na(fit_numeric)))
-  expect_true(all(is.finite(fit_numeric)))
-  
-  expect_true(sd(fit$train_predictions) > 0)
-  expect_true(sd(fit$train_predictions_control) > 0)
-  expect_true(sd(fit$train_predictions_treat) > 0)
-  
-  expect_equal(dim(fit$train_predictions_sample_control), c(10, n))
-  expect_equal(dim(fit$train_predictions_sample_treat), c(10, n))
-  
-  # Forestwide shrinkage values should be non-negative
-  expect_true(all(fit$forestwide_shrinkage_control >= 0))
-  expect_true(all(fit$forestwide_shrinkage_treat >= 0))
-})
-
 
 # ── treatment_coding ──────────────────────────────────────────────────────────
 
@@ -611,5 +548,70 @@ test_that("CausalShrinkageForest n_chains > 1 pools chains correctly", {
   expect_equal(fit$mcmc$n_chains, 2)
   expect_length(fit$chains$acceptance_ratios_control, 2)
   expect_length(fit$chains$acceptance_ratios_treat,   2)
+
+  # Split counts are pooled over both chains, one row per retained draw
+  expect_equal(dim(fit$split_counts_control), c(20, p))
+  expect_equal(dim(fit$split_counts_treat),   c(20, p))
+  expect_false(any(c("store_split_counts_control", "store_split_counts_treat")
+                   %in% names(fit)))
 })
 
+
+# ── Treatment weights in the standard-prior engine (fixed in 2.1.1) ───────────
+#
+# The treatment forest fits (y - mu(x)) / b_i with weights b_i^2. Before
+# 2.1.1 the engine behind the "standard" and "dirichlet" priors ignored those
+# weights:
+#   * binary coding: controls (b = 0) entered as residual 0 with full weight,
+#     pulling the effect to about tau * p / (1 + p) = tau / 3 here;
+#   * centered coding: the effect was overconfident and sigma collapsed.
+#
+# The signal is strong (n = 400, effect 2, noise SD 0.5). Over three seeds
+# and two generators the correct fit gave effects of 1.88 to 2.06 and noise
+# SDs of 0.44 to 0.49; the code before the fix gave an effect of 0.59
+# (binary) and noise SDs of 0.81 (binary) and 0.28 (centered). The
+# tolerances sit well away from both, so the tests hold for any seed and any
+# random number generator.
+
+for (coding in c("binary", "centered")) {
+  test_that(paste0("standard-prior treatment forest uses the treatment weights (",
+                   coding, " coding)"), {
+    skip_on_cran()
+
+    set.seed(2025)
+    n <- 400
+    p <- 3
+    tau <- 2
+    sigma_true <- 0.5
+    X <- matrix(runif(n * p), ncol = p)
+    treatment <- rbinom(n, 1, 0.5)
+    y <- X[, 1] + treatment * tau + rnorm(n, sd = sigma_true)
+
+    fit <- CausalShrinkageForest(
+      y = y,
+      X_train_control = X,
+      X_train_treat = X,
+      treatment_indicator_train = treatment,
+      outcome_type = "continuous",
+      number_of_trees_control = 50,
+      number_of_trees_treat = 20,
+      prior_type_control = "standard",
+      prior_type_treat = "standard",
+      local_hp_control = 2 / sqrt(50),
+      local_hp_treat = 1 / sqrt(20),
+      treatment_coding = coding,
+      N_post = 300,
+      N_burn = 300,
+      verbose = FALSE
+    )
+
+    # Average effect: about 2 when the weights are used, about 0.6 when not
+    expect_lt(abs(mean(fit$train_predictions_treat) - tau), 0.5)
+
+    # Noise SD: about 0.44 to 0.49 when the weights are used. Before the fix
+    # it was 0.81 (binary) and 0.28 (centered). fit$sigma is on the
+    # standardized scale (y / sigma_hat).
+    sigma_post <- mean(fit$sigma) * fit$preprocess$sigma_hat
+    expect_lt(abs(sigma_post / sigma_true - 1), 0.25)
+  })
+}

@@ -250,14 +250,13 @@ fit_hs <- ShrinkageTrees(
   verbose         = FALSE
 )
 
-# Forest-wide horseshoe (horseshoe_fw)
-fit_fw <- ShrinkageTrees(
+# Half-Cauchy prior (local shrinkage only)
+fit_hc <- ShrinkageTrees(
   y               = y_cont,
   X_train         = X_syn,
   outcome_type    = "continuous",
-  prior_type      = "horseshoe_fw",
+  prior_type      = "half-cauchy",
   local_hp        = 1.0 / sqrt(5),
-  global_hp       = 1.0 / sqrt(5),
   number_of_trees = 5,
   N_post          = 50,
   N_burn          = 25,
@@ -266,8 +265,8 @@ fit_fw <- ShrinkageTrees(
 
 cat("Horseshoe   — train RMSE:",
     round(sqrt(mean((fit_hs$train_predictions - y_cont)^2)), 3), "\n")
-cat("Horseshoe FW— train RMSE:",
-    round(sqrt(mean((fit_fw$train_predictions - y_cont)^2)), 3), "\n")
+cat("Half-Cauchy — train RMSE:",
+    round(sqrt(mean((fit_hc$train_predictions - y_cont)^2)), 3), "\n")
 
 ## ----survival-bart-dart-------------------------------------------------------
 set.seed(4)
@@ -486,30 +485,6 @@ cat("Acceptance ratio (control):",
     round(fit_csf$acceptance_ratio_control, 3), "\n")
 cat("Acceptance ratio (treat)  :",
     round(fit_csf$acceptance_ratio_treat, 3), "\n")
-
-## ----causal-shrinkage-fw------------------------------------------------------
-set.seed(11)
-fit_fw2 <- CausalShrinkageForest(
-  y                         = y_causal,
-  X_train_control           = X_syn,
-  X_train_treat             = X_syn,
-  treatment_indicator_train = W_syn,
-  outcome_type              = "continuous",
-  prior_type_control        = "horseshoe_fw",
-  prior_type_treat          = "horseshoe_fw",
-  local_hp_control          = lh,
-  global_hp_control         = lh,
-  local_hp_treat            = lh,
-  global_hp_treat           = lh,
-  number_of_trees_control   = 5,
-  number_of_trees_treat     = 5,
-  N_post                    = 50,
-  N_burn                    = 25,
-  verbose                   = FALSE
-)
-
-cat("Forest-wide shrinkage (control, first 5 draws):\n")
-print(round(fit_fw2$forestwide_shrinkage_control[1:5], 4))
 
 ## ----pp-fit-------------------------------------------------------------------
 set.seed(30)

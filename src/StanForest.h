@@ -31,13 +31,16 @@ public:
   // Getters and Setters
 
   size_t GetNumTrees() { return num_trees; }
-  void   SetNumTrees(size_t new_num_trees);
 
   // Set the feature matrix, working-response vector, and cutpoints.
   void SetData(size_t p, size_t n, double* x, double* y, size_t nc = 100);
   void SetData(size_t p, size_t n, double* x, double* y, int* nc);
 
   void SetPriorInfo(PriorInfo& info)  { this->prior_info = info; }
+  // Per-observation weights (e.g. b_i^2 in BCF); nullptr clears them.  The
+  // pointer is stored, not copied: the caller keeps the array alive.
+  void SetWeights(double* w) { data_info.weights = w; }
+
   void SetPriorParameters(double base, double power, double eta) {
     prior_info.base  = base;
     prior_info.power = power;
@@ -69,7 +72,6 @@ public:
 
   StanTree&       GetTree(size_t i)         { return trees[i]; }
   CutpointMatrix& GetCutpointMatrix()       { return cutpoints; }
-  void            SetCutpointMatrix(CutpointMatrix& new_cutpoints);
 
   std::vector<size_t>& GetVariableSplitCounts() { return variable_split_counts; }
   std::vector<double>& GetSplitProbabilities()  { return split_probabilities; }
